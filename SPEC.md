@@ -249,8 +249,12 @@ Plico is going public (see PRODUCT.md, Business Model and Release). Next, in rou
 7. Done: print or save a note as PDF. The printer icon on a note (or Ctrl+P) opens Windows' print
    dialog with just the page, always in the light theme; choose "Microsoft Print to PDF" to get a
    PDF named after the note.
-8. Release needs: auto-update, first-run intro to the capture shortcut, changeable capture
-   shortcut, date and time format from Windows, privacy policy and terms on the website.
+8. Release needs. Done: a one-time card on first start introduces the capture shortcut (with
+   Try it now); the shortcut can be changed in Settings (press the new keys; it must include Ctrl
+   or Alt, and if Windows or another app already uses it the old one stays and Settings says so;
+   the tray menu shows the current keys); dates and times follow the Windows region format and
+   12 or 24 hour clock. Still to do: auto-update (needs a signing key and a place to host
+   updates, decided with the website) and the privacy policy and terms on the website.
 
 Optional or later: a Today note (one dated note per day that capture can add to), reminders,
 templates, outline view, word count.

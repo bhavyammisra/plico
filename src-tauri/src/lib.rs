@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager, WindowEvent};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 #[derive(Serialize)]
 struct Note {
@@ -618,6 +618,29 @@ fn show_main(app: &tauri::AppHandle) {
     }
 }
 
+/// The Windows region format (`en-IN`) and whether its clock is 12-hour, for showing dates the way
+/// the rest of Windows does.
+#[tauri::command]
+fn date_format() -> (String, bool) {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::Globalization::{GetLocaleInfoEx, GetUserDefaultLocaleName, LOCALE_STIMEFORMAT};
+        let text = |buf: &[u16], n: i32| String::from_utf16_lossy(&buf[..(n.max(1) as usize - 1)]);
+        let mut name = [0u16; 85];
+        let n = GetUserDefaultLocaleName(&mut name);
+        let mut time = [0u16; 80];
+        let t = GetLocaleInfoEx(windows::core::PCWSTR::null(), LOCALE_STIMEFORMAT, Some(&mut time));
+        return (text(&name, n), !text(&time, t).contains('H'));
+    }
+    #[allow(unreachable_code)]
+    (String::new(), false)
+}
+
+#[tauri::command]
+fn open_capture(app: tauri::AppHandle) {
+    show_capture(&app);
+}
+
 fn show_capture(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("capture") {
         let _ = w.center();
@@ -637,9 +660,53 @@ fn request_quit(app: &tauri::AppHandle) {
     });
 }
 
+const DEFAULT_KEYS: &str = "Ctrl+Shift+Space";
+
+fn keys_file(app: &tauri::AppHandle) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("capture-shortcut.txt"))
+}
+
+/// The quick capture shortcut, as written in Settings (`Ctrl+Shift+Space`).
+fn saved_keys(app: &tauri::AppHandle) -> String {
+    keys_file(app)
+        .and_then(|f| fs::read_to_string(f).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| s.parse::<Shortcut>().is_ok())
+        .unwrap_or_else(|| DEFAULT_KEYS.to_string())
+}
+
+struct CaptureMenu(MenuItem<tauri::Wry>);
+
+#[tauri::command]
+fn capture_keys(app: tauri::AppHandle) -> String {
+    saved_keys(&app)
+}
+
+/// Swaps the quick capture shortcut; the old one keeps working if the new one is taken.
+#[tauri::command]
+fn set_capture_keys(app: tauri::AppHandle, keys: String) -> Result<String, String> {
+    let new: Shortcut = keys.parse().map_err(|_| format!("{keys} can't be used as a shortcut."))?;
+    let old = saved_keys(&app).parse::<Shortcut>().ok();
+    if old != Some(new) {
+        let gs = app.global_shortcut();
+        gs.register(new).map_err(|_| format!("{keys} is already used by Windows or another app. Try a different one."))?;
+        if let Some(o) = old {
+            let _ = gs.unregister(o);
+        }
+    }
+    let f = keys_file(&app).ok_or("Can't find Plico's settings folder")?;
+    fs::create_dir_all(f.parent().unwrap_or(&f)).map_err(|e| e.to_string())?;
+    fs::write(&f, &keys).map_err(|e| e.to_string())?;
+    if let Some(m) = app.try_state::<CaptureMenu>() {
+        let _ = m.0.set_text(format!("Quick note    {keys}"));
+    }
+    Ok(keys)
+}
+
 fn tray(app: &tauri::App) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open Plico", true, None::<&str>)?;
-    let capture = MenuItem::with_id(app, "capture", "Quick note    Ctrl+Shift+Space", true, None::<&str>)?;
+    let capture = MenuItem::with_id(app, "capture", format!("Quick note    {}", saved_keys(app.handle())), true, None::<&str>)?;
+    app.manage(CaptureMenu(capture.clone()));
     let quit = MenuItem::with_id(app, "quit", "Quit Plico", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &capture, &PredefinedMenuItem::separator(app)?, &quit])?;
     TrayIconBuilder::with_id("tray")
@@ -666,7 +733,6 @@ fn tray(app: &tauri::App) -> tauri::Result<()> {
 pub fn run() {
     // set before anything starts: the window's page can finish loading before `setup` runs
     STARTED_HIDDEN.store(std::env::args().any(|a| a == "--hidden"), Ordering::Relaxed);
-    let capture_keys = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space);
     tauri::Builder::default()
         .manage(vault::Vault::default())
         // a second launch (Start menu, taskbar) just brings the running Plico forward
@@ -675,16 +741,18 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |app, sc, ev| {
-                    if *sc == capture_keys && ev.state() == ShortcutState::Pressed {
+                // the capture shortcut is the only one Plico registers
+                .with_handler(|app, _, ev| {
+                    if ev.state() == ShortcutState::Pressed {
                         show_capture(app);
                     }
                 })
                 .build(),
         )
-        .setup(move |app| {
-            if let Err(e) = app.global_shortcut().register(capture_keys) {
-                eprintln!("Ctrl+Shift+Space is taken by another app: {e}");
+        .setup(|app| {
+            let keys = saved_keys(app.handle());
+            if let Err(e) = keys.parse::<Shortcut>().map_err(|e| e.to_string()).and_then(|k| app.global_shortcut().register(k).map_err(|e| e.to_string())) {
+                eprintln!("{keys} is taken by another app: {e}");
             }
             tray(app)?;
             if let Ok(r) = root(app.handle()) {
@@ -722,7 +790,7 @@ pub fn run() {
             list_notes, read_note, picture_texts, save_note, trash_note, notes_root, save_image, fetch_title, started_hidden, quit,
             list_trash, restore_note, delete_forever, list_folders, create_folder, rename_folder, delete_folder, move_note,
             vault_status, vault_setup, vault_unlock, vault_lock, vault_set_password, vault_set_question,
-            locked_list, locked_save, locked_delete, lock_note, unlock_note, list_versions, keep_version
+            locked_list, locked_save, locked_delete, lock_note, unlock_note, list_versions, keep_version, capture_keys, set_capture_keys, open_capture, date_format
         ])
         .run(tauri::generate_context!())
         .expect("error while running Plico");
@@ -731,6 +799,14 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn reads_the_windows_date_format() {
+        let (locale, twelve) = date_format();
+        println!("{locale} 12-hour: {twelve}");
+        assert!(locale.contains('-'), "got {locale:?}");
+    }
 
     #[test]
     fn watches_notes_and_folders_only() {

@@ -35,3 +35,16 @@ addEventListener('storage', (e) => {
   paint();
 });
 paint();
+
+/** The quick capture shortcut lives with the Windows side (it has to work before any window opens). */
+export const capture = $state({ keys: 'Ctrl+Shift+Space' });
+if ('__TAURI_INTERNALS__' in window) {
+  import('@tauri-apps/api/core').then(({ invoke }) => invoke('capture_keys')).then((k) => { if (typeof k === 'string') capture.keys = k; }).catch(() => {});
+}
+
+/** Turns a key press into a shortcut like `Ctrl+Shift+N`, or null while only modifiers are held. */
+export function keysOf(e) {
+  if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return null;
+  const key = e.code.replace(/^Key(?=[A-Z]$)/, '').replace(/^Digit(?=\d$)/, '');
+  return [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', key].filter(Boolean).join('+');
+}

@@ -339,6 +339,10 @@ export async function deleteForever(entry) {
 export const daysLeft = (entry) => Math.max(0, 30 - Math.floor((Date.now() - Date.parse(entry.deleted)) / 864e5));
 
 // ---- dates ----
+/** Dates follow the Windows region format and clock (12 or 24 hour); the browser preview uses its own. */
+export const dates = $state({ locale: undefined, hour12: undefined });
+if (inTauri) invoke('date_format').then(([locale, hour12]) => { if (locale) Object.assign(dates, { locale, hour12 }); }).catch(() => {});
+const hm = () => ({ hour: '2-digit', minute: '2-digit', hour12: dates.hour12 });
 const day = 864e5;
 const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
@@ -348,19 +352,19 @@ export function groupOf(iso, now = new Date()) {
   if (diff === 1) return 'Yesterday';
   if (diff < 7) return 'Previous 7 days';
   if (diff < 30) return 'Previous 30 days';
-  return d.toLocaleDateString('en-GB', { month: 'long', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
+  return d.toLocaleDateString(dates.locale, { month: 'long', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
 }
 
 export function timeOf(iso, now = new Date()) {
   const d = new Date(iso), diff = (startOfDay(now) - startOfDay(d)) / day;
-  if (diff <= 0) return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' }).replace('Sept', 'Sep');
+  if (diff <= 0) return d.toLocaleTimeString(dates.locale, hm());
+  return d.toLocaleDateString(dates.locale, { day: 'numeric', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' }).replace('Sept', 'Sep');
 }
 
 export function stampOf(note) {
-  const f = (iso) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const f = (iso) => new Date(iso).toLocaleString(dates.locale, { day: 'numeric', month: 'short', year: 'numeric', ...hm() });
   const c = f(note.created), m = f(note.modified);
   if (c === m) return c;
   const sameDay = new Date(note.created).toDateString() === new Date(note.modified).toDateString();
-  return `${c} · edited ${sameDay ? new Date(note.modified).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : m}`;
+  return `${c} · edited ${sameDay ? new Date(note.modified).toLocaleTimeString(dates.locale, hm()) : m}`;
 }

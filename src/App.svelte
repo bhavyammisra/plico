@@ -13,10 +13,11 @@
   import Editor from './lib/Editor.svelte';
   import Settings from './lib/Settings.svelte';
   import { initMedia } from './lib/media.js';
+  import { settings, set, capture } from './lib/settings.svelte.js';
   import { linksIn } from './lib/extensions.js';
   import {
     store, load, refresh, append, diskChanged, haystack, onlyInPicture, allTags, flushAll, visible, select, create, edit, remove, flush, groupOf, timeOf, stampOf,
-    versionsOf, restoreVersion, togglePin, moveTo, newFolder, renameFolder, deleteFolder, loadTrash, restore, deleteForever, daysLeft,
+    dates, versionsOf, restoreVersion, togglePin, moveTo, newFolder, renameFolder, deleteFolder, loadTrash, restore, deleteForever, daysLeft,
   } from './lib/notes.svelte.js';
 
   const win = '__TAURI_INTERNALS__' in window ? getCurrentWindow() : null;
@@ -370,7 +371,7 @@
           <div class="trash-bar">
             {#if past.loading}<span></span>
             {:else if v}
-              <span title="Version {past.index + 1} of {past.list.length}">Saved {new Date(v.saved).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+              <span title="Version {past.index + 1} of {past.list.length}">Saved {new Date(v.saved).toLocaleString(dates.locale, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: dates.hour12 })}</span>
               <button class="icon-btn" aria-label="Older version" title="Older" disabled={past.index === past.list.length - 1} onclick={() => past.index++}><ChevronLeft {...icon} /></button>
               <button class="icon-btn" aria-label="Newer version" title="Newer" disabled={past.index === 0} onclick={() => past.index--}><ChevronRight {...icon} /></button>
               <button class="ghost-btn" title="Restore this version (the current text is kept as a version too)" onclick={putBack}><RotateCcw size={14} strokeWidth={1.5} />Restore</button>
@@ -427,6 +428,17 @@
     {/if}
   </div>
 </div>
+
+{#if !settings.introDone && store.loaded}
+  <aside class="intro" aria-label="Quick note">
+    <div class="t">Quick note from anywhere</div>
+    <p>Press {#each capture.keys.split('+') as k}<kbd>{k}</kbd>{/each}in any app to write something down. Closing Plico keeps it in the tray, so this stays instant. You can change the keys in Settings.</p>
+    <div class="intro-actions">
+      {#if win}<button class="ghost-btn" onclick={() => { set('introDone', true); invoke('open_capture'); }}>Try it now</button>{/if}
+      <button class="ghost-btn" onclick={() => set('introDone', true)}>Got it</button>
+    </div>
+  </aside>
+{/if}
 
 {#if store.error}
   <div class="toast" role="alert">{store.error}<button class="ghost-btn" onclick={() => (store.error = null)}>Dismiss</button></div>

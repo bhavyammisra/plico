@@ -467,3 +467,15 @@ html.capture-window, html.capture-window body { background: transparent; }
   .prose .ProseMirror p.is-empty::before, .prose .ProseMirror h1.is-empty::before { content: none; }
   .prose img, .prose pre, .prose table, .linkline { break-inside: avoid; }
 }
+
+.set-row .keys { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.set-row .d.err { color: #C42B1C; }
+[data-theme="dark"] .set-row .d.err { color: #FF8A80; }
+
+/* ---- first-run intro to quick capture ---- */
+.intro { position: fixed; right: 20px; bottom: 20px; width: 300px; padding: 14px 16px; border-radius: 10px; background: var(--paper);
+  border: 1px solid var(--line); box-shadow: var(--rim), var(--shadow); font-size: 13px; z-index: 40; }
+.intro .t { font-weight: 600; margin-bottom: 4px; }
+.intro p { margin: 0 0 12px; color: var(--ink-2); line-height: 1.55; }
+.intro kbd { font: 500 11px/1 var(--sans); color: var(--ink-2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 2px 5px; margin-right: 4px; background: var(--field); }
+.intro .intro-actions { display: flex; gap: 8px; justify-content: flex-end; }
