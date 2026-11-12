@@ -246,7 +246,9 @@ Plico is going public (see PRODUCT.md, Business Model and Release). Next, in rou
    on a note shows earlier versions read-only, with older and newer arrows and Restore; restoring
    keeps the current text as a version first, so it can be undone. A note's history is wiped when
    it moves into Locked or is deleted for good, so no readable copy is left behind.
-7. Export or print a note as PDF.
+7. Done: print or save a note as PDF. The printer icon on a note (or Ctrl+P) opens Windows' print
+   dialog with just the page, always in the light theme; choose "Microsoft Print to PDF" to get a
+   PDF named after the note.
 8. Release needs: auto-update, first-run intro to the capture shortcut, changeable capture
    shortcut, date and time format from Windows, privacy policy and terms on the website.
 

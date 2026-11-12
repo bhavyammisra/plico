@@ -5,7 +5,7 @@
   import { listen } from '@tauri-apps/api/event';
   import {
     Minus, Square, X, PanelLeft, SquarePen, Notebook, Settings as Gear, Search, Maximize2, Minimize2, Trash2,
-    Pin, PinOff, Folder, Hash, FolderInput, Plus, RotateCcw, Check, Lock, LockOpen, FolderOutput, History, ChevronLeft, ChevronRight,
+    Pin, PinOff, Folder, Hash, FolderInput, Plus, RotateCcw, Check, Lock, LockOpen, FolderOutput, History, ChevronLeft, ChevronRight, Printer,
   } from 'lucide-svelte';
   import Locked from './lib/Locked.svelte';
   import * as V from './lib/vault.svelte.js';
@@ -43,6 +43,15 @@
       const list = await versionsOf(n);
       if (past?.id === n.id) past = { id: n.id, note: n, list: list.map((v, i) => ({ id: `v${i}`, body: v.body, saved: v.saved, rev: 0 })), index: 0 };
     } catch (e) { past = null; store.error = `Couldn't read this note's history: ${e}`; }
+  }
+
+  /** Print, or Save as PDF from the print dialog: just the page, always in the light theme. */
+  function printNote(n) {
+    const root = document.documentElement, theme = root.dataset.theme, title = document.title;
+    root.dataset.theme = 'light';
+    document.title = n.title || 'Note'; // the suggested PDF file name
+    addEventListener('afterprint', () => { root.dataset.theme = theme; document.title = title; }, { once: true });
+    window.print();
   }
 
   async function putBack() {
@@ -153,6 +162,7 @@
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === 'n') { e.preventDefault(); newNote(); }
     else if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); page = 'notes'; focusMode = false; tick().then(() => search?.focus()); }
+    else if (mod && e.key.toLowerCase() === 'p') { e.preventDefault(); if (page === 'notes' && note && !inTrash && !inLocked) printNote(note); }
     else if (mod && e.key === '.') { e.preventDefault(); focusMode = !focusMode; }
     else if (mod && e.key === '\\') { e.preventDefault(); sidebar = !sidebar; }
     else if (e.key === 'Escape') { if (moveMenu) moveMenu = false; else if (focusMode) focusMode = false; }
@@ -388,6 +398,7 @@
                 </div>
               {/if}
             </div>
+            <button class="icon-btn" aria-label="Print or save as PDF (Ctrl+P)" title="Print or save as PDF  Ctrl+P" onclick={() => printNote(note)}><Printer {...icon} /></button>
             <button class="icon-btn" aria-label="Earlier versions" title="Earlier versions" onclick={() => openHistory(note)}><History {...icon} /></button>
             <button class="icon-btn" aria-label="Focus mode (Ctrl+.)" title="Focus mode  Ctrl+." onclick={() => (focusMode = !focusMode)}>
               {#if focusMode}<Minimize2 {...icon} />{:else}<Maximize2 {...icon} />{/if}

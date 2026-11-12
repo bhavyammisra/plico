@@ -212,3 +212,34 @@ export const Tags = Extension.create({
     ];
   },
 });
+
+/**
+ * Markdown reads a bullet list and a checklist written one after the other as a single list, which
+ * showed up as an empty checkbox. This splits such a list back into a bullet list and a checklist.
+ */
+export const SplitMixedLists = Extension.create({
+  name: 'splitMixedLists',
+  addStorage: () => ({
+    markdown: {
+      parse: {
+        updateDOM(root) {
+          for (const list of root.querySelectorAll('ul.contains-task-list')) {
+            const items = [...list.children];
+            const isTask = (li) => li.classList.contains('task-list-item');
+            if (items.every(isTask)) continue;
+            let run = null;
+            for (const li of items) {
+              if (!run || isTask(li) !== isTask(run.lastElementChild)) {
+                run = document.createElement('ul');
+                if (isTask(li)) { run.className = 'contains-task-list'; run.setAttribute('data-type', 'taskList'); }
+                list.before(run);
+              }
+              run.append(li);
+            }
+            list.remove();
+          }
+        },
+      },
+    },
+  }),
+});

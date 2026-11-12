@@ -18,7 +18,7 @@
     Bold, Italic, Underline as U, Strikethrough, Link as LinkIcon,
     Baseline, Heading1, Heading2, Heading3, Pilcrow, List, ListOrdered, ListChecks, Quote, Minus, Table as TableIcon, Image as ImageIcon, FileText, Plus,
   } from 'lucide-svelte';
-  import { NoteImage, LinkCard, SlashMenu, NoteLink, Tags, TrailingParagraph, TextColor, TEXT_COLORS, ColorHighlight, HIGHLIGHT_COLORS } from './extensions.js';
+  import { NoteImage, LinkCard, SlashMenu, NoteLink, Tags, SplitMixedLists, TrailingParagraph, TextColor, TEXT_COLORS, ColorHighlight, HIGHLIGHT_COLORS } from './extensions.js';
   import { savePicture, isPicture, fetchTitle, openLink, hostOf } from './media.js';
 
   let {
@@ -114,7 +114,7 @@
         Table.configure({ resizable: false }), TableRow, TableHeader, TableCell,
         NoteImage, LinkCard, TrailingParagraph,
         SlashMenu.configure({ items: slashItems, onState: (s) => (slash = s) }),
-        NoteLink, Tags,
+        NoteLink, Tags, SplitMixedLists,
         SlashMenu.extend({ name: 'linkMenu' }).configure({ char: '[[', allowSpaces: true, items: linkItems, onState: (s) => (slash = s) }),
         BubbleMenu.configure({
           pluginKey: 'formatBar', element: bar, tippyOptions: { duration: 120, placement: 'top', maxWidth: 'none' },
