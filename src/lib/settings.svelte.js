@@ -1,5 +1,5 @@
-// shortcut: settings live in the web view's localStorage; move to .envelo/settings.json when the notes folder becomes changeable.
-const KEY = 'envelo.settings';
+// shortcut: settings live in the web view's localStorage; move to .plico/settings.json when the notes folder becomes changeable.
+const KEY = 'plico.settings';
 const defaults = { theme: 'system', accent: 'gold', sel: 'liquid' };
 
 let saved = {};
@@ -28,7 +28,7 @@ export function set(key, value) {
 }
 
 dark.addEventListener('change', () => settings.theme === 'system' && paint());
-// other Envelo windows (quick capture) follow changes made in Settings
+// other Plico windows (quick capture) follow changes made in Settings
 addEventListener('storage', (e) => {
   if (e.key !== KEY) return;
   try { Object.assign(settings, JSON.parse(e.newValue || '{}')); } catch {}

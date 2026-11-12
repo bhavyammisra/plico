@@ -69,7 +69,7 @@
 
   <h2>Notes</h2>
   <div class="set-row">
-    <div><div class="t">Notes folder</div><div class="path">Documents\Envelo</div></div>
+    <div><div class="t">Notes folder</div><div class="path">Documents\Plico</div></div>
   </div>
   <div class="set-row">
     <div><div class="t">Quick capture shortcut</div><div class="d">Opens a small note box over any app.</div></div>
@@ -106,6 +106,6 @@
       <div class="set-row"><div><div class="t">Password</div><div class="d">Opens the Locked folder.</div></div><button class="ghost-btn" onclick={() => begin('password')}>Change</button></div>
       <div class="set-row"><div><div class="t">Security question</div><div class="d">{vault.question}</div></div><button class="ghost-btn" onclick={() => begin('question')}>Change</button></div>
     {/if}
-    <div class="set-row"><div><div class="t">Locks again</div><div class="d">After 5 minutes without use, and whenever you close Envelo.</div></div></div>
+    <div class="set-row"><div><div class="t">Locks again</div><div class="d">After 5 minutes without use, and whenever you close Plico.</div></div></div>
   {/if}
 </div>

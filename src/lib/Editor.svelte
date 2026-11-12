@@ -4,7 +4,6 @@
   import StarterKit from '@tiptap/starter-kit';
   import Placeholder from '@tiptap/extension-placeholder';
   import Underline from '@tiptap/extension-underline';
-  import Highlight from '@tiptap/extension-highlight';
   import TaskList from '@tiptap/extension-task-list';
   import TaskItem from '@tiptap/extension-task-item';
   import Typography from '@tiptap/extension-typography';
@@ -17,19 +16,20 @@
   import { Markdown } from 'tiptap-markdown';
   import {
     Bold, Italic, Underline as U, Strikethrough, Link as LinkIcon,
-    Heading1, Heading2, Heading3, Pilcrow, List, ListOrdered, ListChecks, Quote, Minus, Table as TableIcon, Image as ImageIcon,
+    Baseline, Heading1, Heading2, Heading3, Pilcrow, List, ListOrdered, ListChecks, Quote, Minus, Table as TableIcon, Image as ImageIcon,
   } from 'lucide-svelte';
-  import { NoteImage, LinkCard, SlashMenu, TrailingParagraph } from './extensions.js';
+  import { NoteImage, LinkCard, SlashMenu, TrailingParagraph, TextColor, TEXT_COLORS, ColorHighlight, HIGHLIGHT_COLORS } from './extensions.js';
   import { savePicture, isPicture, fetchTitle, openLink, hostOf } from './media.js';
 
   let { note, onchange = () => {}, readonly = false, pictures = true, onnotice = () => {} } = $props();
 
-  let host, bar, tableBar, picker;
+  let host, bar, tableBar, pictureBar, picker;
   let editor = $state(null);
   let tick = $state(0); // bumps on selection change so the bars show active states
   let slash = $state(null); // the open / menu
+  let colors = $state(null); // 'text' | 'mark' while the format bar shows colour swatches
   let viewer = $state(null); // picture shown larger
-  let shownId = null;
+  let shownId = null, shownRev = 0;
   const icon = { size: 16, strokeWidth: 1.5 };
 
   // Ctrl+1/2/3 for headings, Ctrl+0 back to body text
@@ -94,7 +94,7 @@
       extensions: [
         StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
         Placeholder.configure({ placeholder: ({ pos }) => (pos === 0 ? 'Title' : 'Start writing, or type / for blocks') }),
-        Underline, Highlight, Typography, HeadingKeys,
+        Underline, ColorHighlight, TextColor, Typography, HeadingKeys,
         TaskList, TaskItem.configure({ nested: true }),
         Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener noreferrer' } }),
         Table.configure({ resizable: false }), TableRow, TableHeader, TableCell,
@@ -109,6 +109,10 @@
           // sits just above the whole table instead of over the text cursor
           tippyOptions: { duration: 120, placement: 'top-start', maxWidth: 'none', offset: [0, 8], getReferenceClientRect: tableRect },
           shouldShow: ({ editor, state }) => state.selection.empty && editor.isActive('table'),
+        }),
+        BubbleMenu.configure({
+          pluginKey: 'pictureBar', element: pictureBar, tippyOptions: { duration: 120, placement: 'top', maxWidth: 'none' },
+          shouldShow: ({ state }) => state.selection.node?.type.name === 'image',
         }),
         Markdown.configure({ html: true, tightLists: true, linkify: true, transformPastedText: true }),
       ],
@@ -144,10 +148,11 @@
         const md = editor.storage.markdown.getMarkdown();
         if (md !== note?.body) onchange(md);
       },
-      onSelectionUpdate: () => tick++,
+      onSelectionUpdate: () => { tick++; colors = null; },
       onTransaction: () => tick++,
     });
     shownId = note?.id;
+    shownRev = note?.rev ?? 0;
     refreshCards();
     if (!note?.body && !readonly) editor.commands.focus();
   });
@@ -157,11 +162,13 @@
   // switching notes swaps the document without firing an edit
   $effect(() => {
     const n = note;
-    if (!editor || !n || n.id === shownId) return;
+    if (!editor || !n || (n.id === shownId && (n.rev ?? 0) === shownRev)) return;
+    const same = n.id === shownId;
     shownId = n.id;
+    shownRev = n.rev ?? 0;
     slash = null;
     editor.commands.setContent(n.body, false);
-    if (!readonly) editor.commands.focus(n.body ? 'start' : null);
+    if (!readonly && !same) editor.commands.focus(n.body ? 'start' : null);
     refreshCards();
   });
 
@@ -174,6 +181,14 @@
   const is = (name, attrs) => (tick, editor?.isActive(name, attrs));
   const run = (fn) => fn(editor.chain().focus()).run();
   const keep = (e) => e.preventDefault(); // buttons must not steal the editor's selection
+
+  // lines joined by Shift+Enter are one paragraph; split them first so each line becomes its own item
+  const asList = (toggle) => run((c) => toggle(c.command(({ tr }) => {
+    const breaks = [];
+    tr.doc.nodesBetween(tr.selection.from, tr.selection.to, (n, pos) => { if (n.type.name === 'hardBreak') breaks.push(pos); });
+    for (const pos of breaks.reverse()) tr.delete(pos, pos + 1).split(pos);
+    return true;
+  })));
 
   function link() {
     if (editor.isActive('link')) return run((c) => c.unsetLink());
@@ -188,7 +203,18 @@
 </script>
 
 <div class="fmt" role="toolbar" aria-label="Format" bind:this={bar}>
-  {#if editor}
+  {#if editor && colors === 'text'}
+    <button aria-label="Default colour" aria-pressed={!is('textColor')} onmousedown={keep} onclick={() => { colors = null; run((c) => c.setTextColor(null)); }}><span class="swatch"></span></button>
+    {#each TEXT_COLORS as color (color)}
+      <button aria-label="{color[0].toUpperCase() + color.slice(1)} text" aria-pressed={is('textColor', { color })} onmousedown={keep} onclick={() => { colors = null; run((c) => c.setTextColor(color)); }}><span class="swatch" data-color={color}></span></button>
+    {/each}
+  {:else if editor && colors === 'mark'}
+    <button aria-label="No highlight" onmousedown={keep} onclick={() => { colors = null; run((c) => c.unsetHighlight()); }}><span class="dot none"></span></button>
+    <button aria-label="Yellow highlight" aria-pressed={is('highlight', { color: null })} onmousedown={keep} onclick={() => { colors = null; run((c) => c.setHighlight({ color: null })); }}><span class="dot"></span></button>
+    {#each HIGHLIGHT_COLORS as color (color)}
+      <button aria-label="{color[0].toUpperCase() + color.slice(1)} highlight" aria-pressed={is('highlight', { color })} onmousedown={keep} onclick={() => { colors = null; run((c) => c.setHighlight({ color })); }}><span class="dot" data-color={color}></span></button>
+    {/each}
+  {:else if editor}
     <button aria-pressed={is('heading', { level: 1 })} onmousedown={keep} onclick={() => run((c) => c.toggleHeading({ level: 1 }))}>H1</button>
     <button aria-pressed={is('heading', { level: 2 })} onmousedown={keep} onclick={() => run((c) => c.toggleHeading({ level: 2 }))}>H2</button>
     <button aria-pressed={is('heading', { level: 3 })} onmousedown={keep} onclick={() => run((c) => c.toggleHeading({ level: 3 }))}>H3</button>
@@ -198,8 +224,13 @@
     <button aria-label="Underline" aria-pressed={is('underline')} onmousedown={keep} onclick={() => run((c) => c.toggleUnderline())}><U {...icon} /></button>
     <button aria-label="Strikethrough" aria-pressed={is('strike')} onmousedown={keep} onclick={() => run((c) => c.toggleStrike())}><Strikethrough {...icon} /></button>
     <span class="sep"></span>
-    <button aria-label="Highlight" aria-pressed={is('highlight')} onmousedown={keep} onclick={() => run((c) => c.toggleHighlight())}><span class="dot"></span></button>
+    <button aria-label="Text colour" aria-expanded={colors === 'text'} onmousedown={keep} onclick={() => (colors = 'text')}><span class="ink" data-color={(tick, editor.getAttributes('textColor').color)}><Baseline {...icon} /></span></button>
+    <button aria-label="Highlight" aria-expanded={colors === 'mark'} onmousedown={keep} onclick={() => (colors = 'mark')}><span class="dot" data-color={(tick, editor.getAttributes('highlight').color)}></span></button>
     <button aria-label="Link" aria-pressed={is('link')} onmousedown={keep} onclick={link}><LinkIcon {...icon} /></button>
+    <span class="sep"></span>
+    <button aria-label="Bullets" aria-pressed={is('bulletList')} onmousedown={keep} onclick={() => asList((c) => c.toggleBulletList())}><List {...icon} /></button>
+    <button aria-label="Numbers" aria-pressed={is('orderedList')} onmousedown={keep} onclick={() => asList((c) => c.toggleOrderedList())}><ListOrdered {...icon} /></button>
+    <button aria-label="Checklist" aria-pressed={is('taskList')} onmousedown={keep} onclick={() => asList((c) => c.toggleTaskList())}><ListChecks {...icon} /></button>
   {/if}
 </div>
 
@@ -215,8 +246,17 @@
   {/if}
 </div>
 
+<div class="fmt" role="toolbar" aria-label="Picture" bind:this={pictureBar}>
+  {#if editor}
+    <button onmousedown={keep} onclick={() => (viewer = editor.view.nodeDOM(editor.state.selection.from)?.currentSrc)}>View larger</button>
+    <span class="sep"></span>
+    <button onmousedown={keep} onclick={() => run((c) => c.deleteSelection())}>Delete</button>
+  {/if}
+</div>
+
+<!-- a click selects a picture (showing its bar); double-click opens it large. Read-only notes open it on a click. -->
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="prose" bind:this={host} onclick={openPicture}></div>
+<div class="prose" bind:this={host} onclick={(e) => readonly && openPicture(e)} ondblclick={openPicture}></div>
 
 <input bind:this={picker} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden
   onchange={(e) => { addPictures([...e.currentTarget.files]); e.currentTarget.value = ''; }} />

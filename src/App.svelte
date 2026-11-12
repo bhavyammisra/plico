@@ -14,7 +14,7 @@
   import Settings from './lib/Settings.svelte';
   import { initMedia } from './lib/media.js';
   import {
-    store, load, refresh, flushAll, visible, select, create, edit, remove, flush, groupOf, timeOf, stampOf,
+    store, load, refresh, append, flushAll, visible, select, create, edit, remove, flush, groupOf, timeOf, stampOf,
     togglePin, moveTo, newFolder, renameFolder, deleteFolder, loadTrash, restore, deleteForever, daysLeft,
   } from './lib/notes.svelte.js';
 
@@ -169,6 +169,7 @@
     }
     if (win) {
       listen('notes-changed', () => refresh());
+      listen('capture-append', ({ payload }) => append(payload.path, payload.md));
       // Quit from the tray: save anything still pending, then exit
       listen('quit-requested', async () => { await flushAll(); if (vault.unlocked) await V.lock(); invoke('quit'); });
     }
@@ -189,11 +190,11 @@
 <div class="window">
   <div class="titlebar" data-tauri-drag-region>
     <img class="app-ico" src="/icon.svg" alt="" data-tauri-drag-region />
-    <span class="name" data-tauri-drag-region>Envelo</span>
+    <span class="name" data-tauri-drag-region>Plico</span>
     <div class="caption">
       <button aria-label="Minimise" onclick={() => win?.minimize()}><Minus {...icon} /></button>
       <button aria-label="Maximise" onclick={() => win?.toggleMaximize()}><Square size={14} strokeWidth={1.5} /></button>
-      <button class="close" aria-label="Close to tray" title="Close (Envelo keeps running in the tray)" onclick={closeToTray}><X {...icon} /></button>
+      <button class="close" aria-label="Close to tray" title="Close (Plico keeps running in the tray)" onclick={closeToTray}><X {...icon} /></button>
     </div>
   </div>
 

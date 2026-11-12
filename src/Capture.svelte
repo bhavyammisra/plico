@@ -5,6 +5,7 @@
   import { listen, emitTo } from '@tauri-apps/api/event';
   import { Check } from 'lucide-svelte';
   import './lib/settings.svelte.js'; // same theme and accent as the main window
+  import { titleOf, sorted, timeOf } from './lib/notes.svelte.js';
 
   const win = getCurrentWindow();
   let title = $state('');
@@ -12,7 +13,47 @@
   let saving = $state(false);
   let saved = $state(false);
   let error = $state(null);
-  let box;
+  let box = $state(), findBox = $state(), picksEl = $state();
+  // 'new' writes a new note; 'add' appends to an existing one. Both are kept between openings.
+  let mode = $state('new');
+  let target = $state(null); // { path, title } being added to
+  let notes = $state([]);
+  let query = $state('');
+  let pick = $state(0);
+  const matches = $derived.by(() => {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    return notes.filter((n) => words.every((w) => (n.title + '\n' + n.body).toLowerCase().includes(w)));
+  });
+
+  async function loadNotes() {
+    try { notes = sorted(await invoke('list_notes')).map((n) => ({ ...n, title: titleOf(n.body) })); }
+    catch (e) { error = `Couldn't read your notes: ${e}`; }
+  }
+
+  const focusNow = () => requestAnimationFrame(() => (mode === 'add' && !target ? findBox : box)?.focus());
+
+  function setMode(m) {
+    mode = m;
+    if (m === 'add' && !target) { query = ''; pick = 0; loadNotes(); }
+    focusNow();
+  }
+
+  function choose(n) {
+    target = { path: n.path, title: n.title };
+    focusNow();
+  }
+
+  function change() { target = null; query = ''; pick = 0; loadNotes(); focusNow(); }
+
+  function onFindKey(e) {
+    const n = matches.length;
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && n) {
+      e.preventDefault();
+      pick = (pick + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+      requestAnimationFrame(() => picksEl?.children[pick]?.scrollIntoView({ block: 'nearest' }));
+    } else if (e.key === 'Enter') { e.preventDefault(); if (matches[pick]) choose(matches[pick]); }
+    else if (e.key === 'Escape') { e.preventDefault(); win.hide(); }
+  }
 
   const escAttr = (s) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
@@ -23,6 +64,7 @@
       .join('\n\n');
 
   async function save() {
+    if (mode === 'add') return add();
     if ((!text.trim() && !title.trim()) || saving) return;
     // the first line is the note's title; a bare "#" keeps it empty so the content isn't promoted to title
     const body = `# ${title.trim()}`.trim() + (text.trim() ? `
@@ -36,6 +78,23 @@ ${toMarkdown(text)}` : '');
       return;
     }
     await emitTo('main', 'notes-changed');
+    done();
+  }
+
+  // the main window does the writing (see append in notes.svelte.js), so an open editor never overwrites it
+  async function add() {
+    if (!text.trim() || !target || saving) return;
+    error = null;
+    try {
+      await emitTo('main', 'capture-append', { path: target.path, md: toMarkdown(text) });
+    } catch (e) {
+      error = `Couldn't save: ${e}`;
+      return;
+    }
+    done();
+  }
+
+  function done() {
     saving = saved = true;
     setTimeout(async () => {
       await win.hide();
@@ -50,7 +109,7 @@ ${toMarkdown(text)}` : '');
   }
 
   onMount(() => {
-    const offOpen = listen('capture-open', () => { error = null; requestAnimationFrame(() => box?.focus()); });
+    const offOpen = listen('capture-open', () => { error = null; if (mode === 'add' && !target) loadNotes(); focusNow(); });
     // clicking away puts it away, like Windows search
     const offFocus = win.onFocusChanged(({ payload: focused }) => { if (!focused && !saving) win.hide(); });
     return () => { offOpen.then((f) => f()); offFocus.then((f) => f()); };
@@ -59,12 +118,43 @@ ${toMarkdown(text)}` : '');
 
 <div class="capture-stage">
   <div class="capture" class:saving role="dialog" aria-label="Quick note">
-    <div class="capture-head" data-tauri-drag-region><span class="name" data-tauri-drag-region>Envelo</span><span data-tauri-drag-region>New note</span></div>
-    <input class="title" bind:value={title} onkeydown={onKey} aria-label="Title" placeholder="Title (optional)">
-    <!-- svelte-ignore a11y_autofocus -->
-    <textarea bind:this={box} bind:value={text} onkeydown={onKey} autofocus aria-label="Quick note text" placeholder="A thought, a link, anything"></textarea>
+    <div class="capture-head" data-tauri-drag-region>
+      <span class="name" data-tauri-drag-region>Plico</span>
+      <div class="modes" role="radiogroup" aria-label="Where this goes">
+        <button role="radio" aria-checked={mode === 'new'} onclick={() => setMode('new')}>New note</button>
+        <button role="radio" aria-checked={mode === 'add'} onclick={() => setMode('add')}>Add to a note</button>
+      </div>
+    </div>
+    {#if mode === 'new'}
+      <input class="title" bind:value={title} onkeydown={onKey} aria-label="Title" placeholder="Title (optional)">
+    {:else if target}
+      <div class="target"><span class="title">{target.title || 'Untitled'}</span><button class="change" onclick={change}>Change</button></div>
+    {/if}
+    {#if mode === 'add' && !target}
+      <input class="title find" bind:this={findBox} bind:value={query} oninput={() => (pick = 0)} onkeydown={onFindKey}
+        role="combobox" aria-expanded="true" aria-controls="picks" aria-label="Find a note" placeholder="Find a note">
+      <div class="picks" id="picks" role="listbox" aria-label="Notes" bind:this={picksEl}>
+        {#each matches as n, i (n.path)}
+          <button role="option" aria-selected={i === pick} onclick={() => choose(n)} onmousemove={() => (pick = i)}>
+            <span>{n.title || 'Untitled'}</span><small>{timeOf(n.modified)}</small>
+          </button>
+        {:else}
+          <p class="none">{notes.length ? 'No notes match' : 'No notes yet'}</p>
+        {/each}
+      </div>
+    {:else}
+      <!-- svelte-ignore a11y_autofocus -->
+      <textarea bind:this={box} bind:value={text} onkeydown={onKey} autofocus aria-label="Quick note text"
+        placeholder={mode === 'add' ? 'Added to the end of this note' : 'A thought, a link, anything'}></textarea>
+    {/if}
     {#if error}<p class="capture-error" role="alert">{error}</p>{/if}
-    <div class="capture-foot"><span><kbd>Enter</kbd>Save</span><span><kbd>Shift Enter</kbd>New line</span><span><kbd>Shift Tab</kbd>Title</span><span><kbd>Esc</kbd>Close</span></div>
+    <div class="capture-foot">
+      {#if mode === 'add' && !target}
+        <span><kbd>Up Down</kbd>Move</span><span><kbd>Enter</kbd>Choose</span><span><kbd>Esc</kbd>Close</span>
+      {:else}
+        <span><kbd>Enter</kbd>Save</span><span><kbd>Shift Enter</kbd>New line</span>{#if mode === 'new'}<span><kbd>Shift Tab</kbd>Title</span>{/if}<span><kbd>Esc</kbd>Close</span>
+      {/if}
+    </div>
   </div>
-  <div class="saved" class:show={saved} role="status"><Check size={16} strokeWidth={1.5} />Saved to Envelo</div>
+  <div class="saved" class:show={saved} role="status"><Check size={16} strokeWidth={1.5} />{mode === 'add' && target ? `Added to ${target.title || 'Untitled'}` : 'Saved to Plico'}</div>
 </div>

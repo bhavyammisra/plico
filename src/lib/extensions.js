@@ -1,6 +1,7 @@
-import { Node, Extension } from '@tiptap/core';
+import { Node, Mark, Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import Image from '@tiptap/extension-image';
+import Highlight from '@tiptap/extension-highlight';
 import Suggestion from '@tiptap/suggestion';
 import { resolveSrc, hostOf, openLink } from './media.js';
 
@@ -119,3 +120,23 @@ export const TrailingParagraph = Extension.create({
     ];
   },
 });
+
+/** Text colour, saved as `<span data-color="red">` (a name, not a hex) so each theme shows a readable shade. */
+export const TEXT_COLORS = ['red', 'amber', 'green', 'blue', 'grey'];
+export const TextColor = Mark.create({
+  name: 'textColor',
+  addAttributes: () => ({ color: { default: null, parseHTML: (el) => el.getAttribute('data-color'), renderHTML: (a) => ({ 'data-color': a.color }) } }),
+  parseHTML: () => [{ tag: 'span[data-color]', getAttrs: (el) => (TEXT_COLORS.includes(el.getAttribute('data-color')) ? null : false) }],
+  renderHTML: ({ HTMLAttributes }) => ['span', HTMLAttributes, 0],
+  addCommands() {
+    return { setTextColor: (color) => ({ commands }) => (color ? commands.setMark(this.name, { color }) : commands.unsetMark(this.name)) };
+  },
+});
+
+/** Highlight in colours, saved as `<mark data-color="green">` like text colour; a plain `<mark>` is the usual yellow. */
+export const HIGHLIGHT_COLORS = ['red', 'green', 'blue', 'grey'];
+export const ColorHighlight = Highlight.extend({
+  addAttributes: () => ({
+    color: { default: null, parseHTML: (el) => el.getAttribute('data-color'), renderHTML: (a) => (a.color ? { 'data-color': a.color } : {}) },
+  }),
+}).configure({ multicolor: true });

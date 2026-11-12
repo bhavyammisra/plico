@@ -1,12 +1,12 @@
 [package]
-name = "envelo"
+name = "plico"
 version = "0.1.0"
 description = "A quiet, fast notes app"
 authors = ["Bhavyam Misra"]
 edition = "2021"
 
 [lib]
-name = "envelo_lib"
+name = "plico_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

@@ -5,8 +5,8 @@ const inTauri = '__TAURI_INTERNALS__' in window;
 // Outside Tauri (plain browser preview) notes live in localStorage so the UI can be checked without the app.
 // shortcut: browser-only fallback for UI checks, never used in the real app.
 const fake = {
-  all: () => JSON.parse(localStorage.getItem('envelo.fake') || '[]'),
-  put(list) { localStorage.setItem('envelo.fake', JSON.stringify(list)); },
+  all: () => JSON.parse(localStorage.getItem('plico.fake') || '[]'),
+  put(list) { localStorage.setItem('plico.fake', JSON.stringify(list)); },
 };
 const notInPreview = async () => { throw new Error('Folders and Recently deleted only work in the app'); };
 const api = inTauri
@@ -41,7 +41,7 @@ const api = inTauri
 export const linesOf = (body) => body.split('\n').filter((l) => l.trim());
 export const titleOf = (body) => linesOf(body)[0]?.replace(/^#+\s*/, '').trim() ?? '';
 
-const plain = (s) => s.replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/<[^>]+>/g, '').replace(/\|/g, ' ').replace(/[*_~`>#\[\]()!-]/g, '').replace(/\s+/g, ' ').trim();
+const plain = (s) => s.replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/<[^>]+>/g, '').replace(/\|/g, ' ').replace(/[*_~`>#\[\]()!\\-]/g, '').replace(/\s+/g, ' ').trim();
 const previewOf = (body) => linesOf(body).slice(1).map(plain).filter(Boolean).join(' ').slice(0, 140);
 
 // view: 'all' | 'pinned' | 'trash' | 'folder:<name>'
@@ -49,7 +49,7 @@ export const store = $state({ notes: [], currentId: null, query: '', loaded: fal
 let nextId = 1;
 
 const folderOf = (path) => (path?.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null);
-const decorate = (n) => ({ ...n, pinned: !!n.pinned, folder: folderOf(n.path), id: nextId++, title: titleOf(n.body), preview: previewOf(n.body), queue: Promise.resolve() });
+const decorate = (n) => ({ ...n, pinned: !!n.pinned, folder: folderOf(n.path), id: nextId++, title: titleOf(n.body), preview: previewOf(n.body), rev: 0, queue: Promise.resolve() });
 const fail = (what) => (e) => { console.error(what, e); store.error = `${what}: ${e}`; };
 
 export async function load() {
@@ -148,6 +148,16 @@ export async function remove(note, { skipTrash = false } = {}) {
   const i = list.findIndex((n) => n.id === note.id);
   store.notes = store.notes.filter((n) => n.id !== note.id);
   if (store.currentId === note.id) store.currentId = (list[i + 1] ?? list[i - 1])?.id ?? null;
+}
+
+/** Quick capture adding to an existing note. Done here, not in the capture window, so it can't clash with the open editor. */
+export async function append(path, md) {
+  let note = store.notes.find((n) => n.path === path);
+  if (!note) { await refresh(); note = store.notes.find((n) => n.path === path); }
+  if (!note) return flush(create(`#\n\n${md}`)); // gone or renamed meanwhile: keep the text as a new note
+  edit(note, `${note.body.trimEnd()}\n\n${md}`);
+  note.rev++; // tells an open editor to show the new text
+  return flush(note);
 }
 
 export function togglePin(note) {

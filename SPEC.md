@@ -1,14 +1,16 @@
-# Envelo spec (v1)
+# Plico spec (v1)
 
-The full plan agreed in planning, 18 Oct 2026. Product context lives in PRODUCT.md; visual
-reference is `design/mockup.html`. Nothing here is built yet.
+The full plan agreed in planning, 18 Oct 2026, kept up to date as features land. Product context
+lives in PRODUCT.md; visual reference is `design/mockup.html`. v1 is built; the roadmap at the end
+lists what comes next for the public release.
 
 ## Principles
 
 1. Opens in under a second, never lags while typing or scrolling.
 2. Capture first, organise later.
 3. Quiet by default: controls appear when needed.
-4. Plain files, fully offline. No account, no database, no sync.
+4. Plain files, fully offline. No account, no database, no server. Sync (planned) is device to
+   device and never blocks opening or capture.
 
 ## Stack
 
@@ -21,13 +23,13 @@ reference is `design/mockup.html`. Nothing here is built yet.
 ## Storage
 
 ```
-<notes folder>/            chosen on first run, default Documents\Envelo
+<notes folder>/            chosen on first run, default Documents\Plico
   Website ideas.md
   <Folder name>/...        optional folders are real folders
   images/                  pasted pictures, referenced from notes
   .locked/                 encrypted locked notes
   .trash/                  deleted notes, kept 30 days
-  .envelo/                 settings, pins, lock metadata
+  .plico/                 settings, pins, lock metadata
 ```
 
 Each note keeps created and edited times in a small front-matter block.
@@ -51,13 +53,22 @@ Each note keeps created and edited times in a small front-matter block.
   numbers, `[]` for checkbox, `>` for quote, `---` for divider.
 - `/` menu: Heading 1, 2, 3, Text, Bullets, Numbers, Checklist, Quote, Divider, Table, Image.
 - Selecting text shows a small format bar: H1 H2 H3, bold, italic, underline, strikethrough,
-  highlight (a few soft colours), link.
+  text colour, highlight, link, bullets, numbers, checklist.
+- Text colour: default, red, amber, green, blue, grey. Highlight: none, yellow, red, green, blue,
+  grey. Both open a row of swatches in the bar. Saved as a colour name
+  (`<span data-color="red">`, `<mark data-color="green">`, plain `<mark>` for yellow) so each
+  theme shows its own readable shade.
+- The list buttons turn selected lines into list items; lines joined with Shift+Enter are split
+  so each becomes its own item. Pressing again turns them back into lines.
 - Tables: insert via `/table` (3 by 3 with a header row). While the cursor is in a table, a bar
   above it offers Add row, Remove row, Add column, Remove column, Delete table. Saved as
   Markdown tables.
 - Images: paste (Ctrl+V), drag in, or `/` Picture to pick files (PNG, JPG, GIF, WebP, up to 40 MB).
   Saved to `images/` in the notes folder and written as `![](images/name.png)` on its own line.
-  Full width with soft corners; click to view larger, Esc or click to close. Loaded lazily.
+  Full width with soft corners. A click selects a picture and shows a bar with View larger and
+  Delete (Delete or Backspace also removes it; Ctrl+Z brings it back). Double-click views it
+  larger; Esc or click to close. Loaded lazily. Deleting keeps the file in `images/`.
+- Dividers are a mid-grey line visible in both themes; a selected divider shows the accent.
 - Every note always ends with an empty line so you can type after a picture, table or card.
 - Links: a URL pasted on an empty line becomes a link card (site initial, page title, site name).
   The title is fetched in the background when online (5 s timeout) and never blocks typing; cards
@@ -80,20 +91,29 @@ highlighted. Index kept in memory, built at start-up from the files.
 
 - Ctrl+Shift+Space from anywhere in Windows opens a small box in the middle of the screen, over
   the current app (a separate always-on-top window).
-- Enter saves it as a new note, Shift+Enter adds a line, Esc or clicking away closes it. A
-  dismissed draft is kept for next time.
+- Two buttons at the top: New note (optional title, then text) and Add to a note. Add to a note
+  shows a searchable list of notes, newest first (arrows and Enter, or click); the chosen note's
+  title replaces the title box, with Change to pick another. The choice and the chosen note are
+  remembered between openings.
+- Enter saves, Shift+Enter adds a line, Esc or clicking away closes it. A dismissed draft is kept
+  for next time. The text box grows with the text up to about 5 lines, then scrolls with a soft
+  fade at the top.
+- Adding to a note is done by the main window (event `capture-append`), so an open editor shows
+  the new text at once and never overwrites it. If the note was renamed or deleted meanwhile,
+  the text becomes a new note.
 - Each line becomes its own paragraph; a line that is only a link becomes a link card (its title
   is fetched when the note is opened).
-- On Enter the box folds up and away (about 0.35 s) and "Saved to Envelo" shows briefly. The
-  main window's list picks up the new note immediately.
+- On Enter the box folds up and away (about 0.35 s) and "Saved to Plico" shows briefly. The
+  main window's list picks up the new note immediately. Adding to a note shows "Added to" and
+  the note's title instead.
 
 ## Tray and startup
 
-- Closing the main window hides it; Envelo keeps running in the tray so quick capture is
+- Closing the main window hides it; Plico keeps running in the tray so quick capture is
   instant. Unsaved edits are written first.
-- Tray icon: left-click opens Envelo. Menu: Open Envelo, Quick note, Quit Envelo (saves pending
+- Tray icon: left-click opens Plico. Menu: Open Plico, Quick note, Quit Plico (saves pending
   edits, then exits).
-- Starting Envelo again (Start menu, taskbar) brings the running window forward; there is only
+- Starting Plico again (Start menu, taskbar) brings the running window forward; there is only
   ever one copy running.
 - Settings, "Start with Windows" (off by default): launches at sign-in straight into the tray,
   without opening a window.
@@ -111,7 +131,7 @@ highlighted. Index kept in memory, built at start-up from the files.
 - Recently deleted: lists deleted notes newest first, read-only, with when it was deleted and how
   many days are left. Restore puts it back in its folder (recreating the folder if needed).
   "Delete now" then "Delete forever" removes it for good. Notes older than 30 days are removed
-  when Envelo starts.
+  when Plico starts.
 
 ## Locked folder
 
@@ -194,6 +214,45 @@ Installer: 2.1 MB; app: 5 MB.
 - List scrolling smooth with 5,000 notes (only visible rows drawn).
 - Search results within 50 ms of a keystroke for 5,000 notes.
 
-## Not in v1
+## Roadmap (agreed 12 Nov 2026)
 
-Sync, accounts, AI, a Tasks tab, widgets, templates, photo backgrounds, reminders.
+Plico is going public (see PRODUCT.md, Business Model and Release). Next, in rough order:
+
+1. Reload on disk changes: watch the notes folder; a note changed by another program (OneDrive,
+   phone sync, a text editor) reloads instead of being overwritten, and if it was being edited at
+   the same moment both versions are kept. Needed before any sync.
+2. Screenshots in quick capture: paste or drop a picture into the capture box.
+3. Search text inside pictures, using Windows' built-in offline text recognition, run in the
+   background when a picture is added.
+4. Links between notes with `[[`, and a "Linked from" list at the bottom of a note. No graph view.
+5. Tags: `#tag` in the text, a tag list in the sidebar.
+6. Version history: earlier versions of each note kept locally, restorable.
+7. Export or print a note as PDF.
+8. Release needs: auto-update, first-run intro to the capture shortcut, changeable capture
+   shortcut, date and time format from Windows, privacy policy and terms on the website.
+
+Optional or later: a Today note (one dated note per day that capture can add to), reminders,
+templates, outline view, word count.
+
+## Phone app (after the Windows app is finished)
+
+- Android first, from the same Tauri code. Mac and iPhone later.
+- Signature feature: a Quick Settings tile (the pull-down panel) opens a small capture box over
+  whatever app is open: New note or Add to a note, optional title, a tick to save. Fully offline.
+- Also: "Share to Plico" from any app's share menu, and a home screen widget.
+- Needs native Android code (a tile service and a dialog-style screen) alongside Tauri.
+
+## Sync plan (with the phone app)
+
+- No accounts and no server. Phone and laptop pair once (scan a code shown on the laptop), then
+  swap only changed files directly over the same Wi-Fi, encrypted.
+- The app always opens and saves from local files; sync runs afterwards in the background and
+  never makes opening or capture wait. If the other device isn't reachable it tries later.
+- Settings: automatic background sync (default), a Sync now button, and "Sync only when I tap".
+- Away from home is a later option (a cloud folder the user already has, or Syncthing's relays).
+  Costs nothing to run.
+
+## Not planned
+
+Accounts, a server, AI, a Tasks tab, databases, canvas, graph view, plugins, live co-editing,
+photo backgrounds.

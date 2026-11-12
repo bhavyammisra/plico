@@ -35,13 +35,13 @@ struct Front {
     folder: Option<String>, // only in .trash: where the note came from
 }
 
-/// Notes live as plain .md files in Documents\Envelo.
+/// Notes live as plain .md files in Documents\Plico.
 fn root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     // dev builds can point at a scratch folder so testing never touches real notes
-    let test_dir = cfg!(debug_assertions).then(|| std::env::var_os("ENVELO_NOTES_DIR")).flatten();
+    let test_dir = cfg!(debug_assertions).then(|| std::env::var_os("PLICO_NOTES_DIR")).flatten();
     let dir = match test_dir {
         Some(d) => PathBuf::from(d),
-        None => app.path().document_dir().map_err(|e| e.to_string())?.join("Envelo"),
+        None => app.path().document_dir().map_err(|e| e.to_string())?.join("Plico"),
     };
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
@@ -118,7 +118,7 @@ fn file_stem(title: &str) -> String {
     if s.is_empty() { "Untitled".into() } else { s }
 }
 
-/// Folder names: one level, Windows-safe, and not one of Envelo's own folders.
+/// Folder names: one level, Windows-safe, and not one of Plico's own folders.
 fn folder_name(name: &str) -> Result<String, String> {
     let n = file_stem(name);
     if name.trim().is_empty() || n.starts_with('.') || n.eq_ignore_ascii_case("images") {
@@ -153,7 +153,7 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     for e in entries.flatten() {
         let p = e.path();
         if e.file_name().to_string_lossy().starts_with('.') {
-            continue; // .trash, .locked, .envelo
+            continue; // .trash, .locked, .plico
         }
         if p.is_dir() {
             walk(&p, out);
@@ -428,7 +428,7 @@ async fn fetch_title(url: String) -> Option<String> {
     tauri::async_runtime::spawn_blocking(move || {
         use std::io::Read;
         let agent = ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(5)).redirects(5).build();
-        let res = agent.get(&url).set("User-Agent", "Envelo/0.1 (notes app)").call().ok()?;
+        let res = agent.get(&url).set("User-Agent", "Plico/0.1 (notes app)").call().ok()?;
         let mut buf = String::new();
         res.into_reader().take(256 * 1024).read_to_string(&mut buf).ok()?;
         page_title(&buf)
@@ -522,7 +522,7 @@ fn unlock_note(app: tauri::AppHandle, state: tauri::State<vault::Vault>, id: Str
     Ok(rel(&root, &target))
 }
 
-/// Set when Windows starts Envelo at sign-in: it waits in the tray instead of opening a window.
+/// Set when Windows starts Plico at sign-in: it waits in the tray instead of opening a window.
 static STARTED_HIDDEN: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
@@ -564,13 +564,13 @@ fn request_quit(app: &tauri::AppHandle) {
 }
 
 fn tray(app: &tauri::App) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Open Envelo", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "Open Plico", true, None::<&str>)?;
     let capture = MenuItem::with_id(app, "capture", "Quick note    Ctrl+Shift+Space", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Envelo", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Plico", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &capture, &PredefinedMenuItem::separator(app)?, &quit])?;
     TrayIconBuilder::with_id("tray")
         .icon(app.default_window_icon().cloned().expect("app icon"))
-        .tooltip("Envelo")
+        .tooltip("Plico")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, e| match e.id.as_ref() {
@@ -595,7 +595,7 @@ pub fn run() {
     let capture_keys = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space);
     tauri::Builder::default()
         .manage(vault::Vault::default())
-        // a second launch (Start menu, taskbar) just brings the running Envelo forward
+        // a second launch (Start menu, taskbar) just brings the running Plico forward
         .plugin(tauri_plugin_single_instance::init(|app, _, _| show_main(app)))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
@@ -618,7 +618,7 @@ pub fn run() {
             }
             Ok(())
         })
-        // closing the window keeps Envelo in the tray so quick capture stays instant
+        // closing the window keeps Plico in the tray so quick capture stays instant
         .on_window_event(|w, e| {
             if let WindowEvent::CloseRequested { api, .. } = e {
                 if w.label() == "main" {
@@ -646,7 +646,7 @@ pub fn run() {
             locked_list, locked_save, locked_delete, lock_note, unlock_note
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Envelo");
+        .expect("error while running Plico");
 }
 
 #[cfg(test)]
