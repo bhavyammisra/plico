@@ -14,7 +14,7 @@
   import Settings from './lib/Settings.svelte';
   import { initMedia } from './lib/media.js';
   import {
-    store, load, refresh, append, diskChanged, flushAll, visible, select, create, edit, remove, flush, groupOf, timeOf, stampOf,
+    store, load, refresh, append, diskChanged, haystack, onlyInPicture, flushAll, visible, select, create, edit, remove, flush, groupOf, timeOf, stampOf,
     togglePin, moveTo, newFolder, renameFolder, deleteFolder, loadTrash, restore, deleteForever, daysLeft,
   } from './lib/notes.svelte.js';
 
@@ -34,7 +34,8 @@
   const inLocked = $derived(store.view === 'locked');
   const keyOf = (n) => (inLocked ? n.key : n.id);
   let confirmLockedDelete = $state(false);
-  const matches = (n, words) => words.every((w) => (n.title + '\n' + n.body).toLowerCase().includes(w));
+  const matches = (n, words) => { const hay = haystack(n); return words.every((w) => hay.includes(w)); };
+  const searchWords = $derived(store.query.toLowerCase().split(/\s+/).filter(Boolean));
   const items = $derived.by(() => {
     const words = store.query.toLowerCase().split(/\s+/).filter(Boolean);
     if (inLocked) return vault.unlocked && !vault.resetting ? [...vault.notes].sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified)).filter((n) => matches(n, words)) : [];
@@ -171,6 +172,7 @@
       listen('notes-changed', () => refresh());
       listen('capture-append', ({ payload }) => append(payload.path, payload.md));
       listen('disk-changed', ({ payload }) => diskChanged(payload));
+      listen('picture-text', ({ payload: [src, text] }) => (store.pictureText = { ...store.pictureText, [src]: text }));
       // Quit from the tray: save anything still pending, then exit
       listen('quit-requested', async () => { await flushAll(); if (vault.unlocked) await V.lock(); invoke('quit'); });
     }
@@ -255,7 +257,7 @@
               <button class="row" role="option" aria-selected={keyOf(n) === currentKey} aria-current={keyOf(n) === currentKey} onclick={() => pick(n)}>
                 {#if keyOf(n) === currentKey}{#key keyOf(n)}<div class="topo" aria-hidden="true" style:--pos={patch(n)}></div>{/key}{/if}
                 <div class="row-title">{#if n.pinned}<Pin size={13} strokeWidth={1.5} />{/if}{n.title || (n.preview ? 'Untitled' : 'New note')}</div>
-                <div class="row-meta"><time>{timeOf(n.modified)}</time><span>{n.preview}</span></div>
+                <div class="row-meta"><time>{timeOf(n.modified)}</time><span>{#if onlyInPicture(n, searchWords)}<em class="in-pic">Found in a picture</em> {/if}{n.preview}</span></div>
               </button>
             {/each}
           {:else}

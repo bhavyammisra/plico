@@ -1,3 +1,4 @@
+mod ocr;
 mod vault;
 
 use serde::Serialize;
@@ -181,6 +182,12 @@ fn note_at(root: &Path, p: &Path) -> Option<Note> {
         body,
         pinned: f.pinned,
     })
+}
+
+/// Text read from each picture so far (picture path to text), for search.
+#[tauri::command]
+fn picture_texts(app: tauri::AppHandle) -> Result<std::collections::HashMap<String, String>, String> {
+    Ok(ocr::load(&root(&app)?))
 }
 
 /// One note as it is on disk now, or nothing if the file is gone.
@@ -441,6 +448,7 @@ fn save_image(app: tauri::AppHandle, request: tauri::ipc::Request) -> Result<Str
     let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S-%3f");
     let name = format!("{stamp}.{ext}");
     fs::write(dir.join(&name), bytes).map_err(|e| e.to_string())?;
+    ocr::index_in_background(app.clone(), root(&app)?);
     Ok(format!("images/{name}"))
 }
 
@@ -652,6 +660,7 @@ pub fn run() {
             tray(app)?;
             if let Ok(r) = root(app.handle()) {
                 purge_trash(&r);
+                ocr::index_in_background(app.handle().clone(), r.clone());
                 match watch_notes(app.handle(), r) {
                     Ok(w) => { app.manage(NotesWatcher(std::sync::Mutex::new(w))); }
                     Err(e) => eprintln!("Can't watch the notes folder for outside changes: {e}"),
@@ -681,7 +690,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            list_notes, read_note, save_note, trash_note, notes_root, save_image, fetch_title, started_hidden, quit,
+            list_notes, read_note, picture_texts, save_note, trash_note, notes_root, save_image, fetch_title, started_hidden, quit,
             list_trash, restore_note, delete_forever, list_folders, create_folder, rename_folder, delete_folder, move_note,
             vault_status, vault_setup, vault_unlock, vault_lock, vault_set_password, vault_set_question,
             locked_list, locked_save, locked_delete, lock_note, unlock_note

@@ -442,3 +442,4 @@ html.capture-window, html.capture-window body { background: transparent; }
 .lock-note-bar { display: flex; gap: 2px; }
 
 .set-form { padding: 14px 0; border-bottom: 1px solid var(--line); max-width: 420px; }
+.row-meta .in-pic { font-style: normal; color: var(--accent); margin-right: 6px; }

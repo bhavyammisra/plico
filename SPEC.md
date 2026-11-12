@@ -227,8 +227,10 @@ Plico is going public (see PRODUCT.md, Business Model and Release). Next, in rou
    show as small thumbnails (hover for a remove button) and are written to `images/` only when the
    note is saved, each on its own line after the text. Works for New note and Add to a note; a
    note can be just pictures.
-3. Search text inside pictures, using Windows' built-in offline text recognition, run in the
-   background when a picture is added.
+3. Done: search text inside pictures. Windows' built-in offline text recognition (Windows.Media.Ocr)
+   reads each picture in `images/` once, in the background (at start-up for any not read yet, and
+   after each new picture). Results are cached in `.plico/picture-text.json`. Search matches words
+   in a note's pictures; a note found only that way shows "Found in a picture" in the list.
 4. Links between notes with `[[`, and a "Linked from" list at the bottom of a note. No graph view.
 5. Tags: `#tag` in the text, a tag list in the sidebar.
 6. Version history: earlier versions of each note kept locally, restorable.

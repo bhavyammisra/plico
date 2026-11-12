@@ -13,6 +13,7 @@ const api = inTauri
   ? {
       list: () => invoke('list_notes'),
       read: (path) => invoke('read_note', { path }),
+      pictureTexts: () => invoke('picture_texts'),
       save: (path, body, created, opts = {}) => invoke('save_note', { path, body, created, ...opts }),
       trash: (path) => invoke('trash_note', { path }),
       folders: () => invoke('list_folders'),
@@ -27,6 +28,7 @@ const api = inTauri
   : {
       list: async () => fake.all(),
       read: async (path) => fake.all().find((n) => n.path === path) ?? null,
+      pictureTexts: async () => JSON.parse(localStorage.getItem('plico.fakePictureText') || '{}'),
       async save(path, body, created, opts = {}) {
         const list = fake.all().filter((n) => n.path !== path);
         const note = { path: path ?? `${crypto.randomUUID()}.md`, body, created, modified: opts.modified ?? new Date().toISOString(), pinned: !!opts.pinned };
@@ -47,7 +49,7 @@ const plain = (s) => s.replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]*)\
 const previewOf = (body) => linesOf(body).slice(1).map(plain).filter(Boolean).join(' ').slice(0, 140);
 
 // view: 'all' | 'pinned' | 'trash' | 'folder:<name>'
-export const store = $state({ notes: [], currentId: null, query: '', loaded: false, error: null, view: 'all', folders: [], trash: [], trashId: null });
+export const store = $state({ pictureText: {}, notes: [], currentId: null, query: '', loaded: false, error: null, view: 'all', folders: [], trash: [], trashId: null });
 let nextId = 1;
 
 const folderOf = (path) => (path?.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null);
@@ -58,6 +60,7 @@ export async function load() {
   [store.notes, store.folders] = await Promise.all([api.list().then((l) => l.map(decorate)), api.folders()]);
   store.currentId = sorted(store.notes)[0]?.id ?? null;
   store.loaded = true;
+  api.pictureTexts().then((t) => (store.pictureText = { ...t, ...store.pictureText })).catch(() => {});
 }
 
 /** Picks up notes written elsewhere (quick capture) without disturbing the one being edited. */
@@ -76,6 +79,17 @@ export const flushAll = () => Promise.all(store.notes.map(flush));
 export const sorted = (notes) => [...notes].sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
 export const current = () => store.notes.find((n) => n.id === store.currentId) ?? null;
 
+// pictures are written as ![](images/x.png); search also covers the text read from them
+const picturesIn = (body) => [...body.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)].map((m) => m[1]);
+
+/** Everything search looks at for a note: title, text, and words inside its pictures. */
+export const haystack = (n) =>
+  (n.title + '\n' + n.body + '\n' + picturesIn(n.body).map((src) => store.pictureText[src] ?? '').join('\n')).toLowerCase();
+
+/** True when a search matches the note only through text inside one of its pictures. */
+export const onlyInPicture = (n, words) =>
+  words.length > 0 && !words.every((w) => (n.title + '\n' + n.body).toLowerCase().includes(w));
+
 export function visible() {
   const words = store.query.toLowerCase().split(/\s+/).filter(Boolean);
   const v = store.view;
@@ -84,7 +98,7 @@ export function visible() {
   else if (v.startsWith('folder:')) list = list.filter((n) => n.folder === v.slice(7));
   if (!words.length) return list;
   return list.filter((n) => {
-    const hay = (n.title + '\n' + n.body).toLowerCase();
+    const hay = haystack(n);
     return words.every((w) => hay.includes(w));
   });
 }
