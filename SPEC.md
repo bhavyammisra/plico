@@ -223,7 +223,10 @@ Plico is going public (see PRODUCT.md, Business Model and Release). Next, in rou
    compares with the text it last wrote), adds new files, drops deleted ones, and refreshes the
    folder list. If a note was being edited when another program changed it, the outside version
    wins in the note and the unsaved text is kept as a new note, with a message.
-2. Screenshots in quick capture: paste or drop a picture into the capture box.
+2. Done: screenshots in quick capture. Paste (Ctrl+V) or drop pictures into the capture box; they
+   show as small thumbnails (hover for a remove button) and are written to `images/` only when the
+   note is saved, each on its own line after the text. Works for New note and Add to a note; a
+   note can be just pictures.
 3. Search text inside pictures, using Windows' built-in offline text recognition, run in the
    background when a picture is added.
 4. Links between notes with `[[`, and a "Linked from" list at the bottom of a note. No graph view.

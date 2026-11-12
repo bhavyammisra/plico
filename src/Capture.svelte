@@ -3,7 +3,8 @@
   import { invoke } from '@tauri-apps/api/core';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { listen, emitTo } from '@tauri-apps/api/event';
-  import { Check } from 'lucide-svelte';
+  import { Check, X } from 'lucide-svelte';
+  import { savePicture, isPicture } from './lib/media.js';
   import './lib/settings.svelte.js'; // same theme and accent as the main window
   import { titleOf, sorted, timeOf } from './lib/notes.svelte.js';
 
@@ -16,6 +17,7 @@
   let box = $state(), findBox = $state(), picksEl = $state();
   // 'new' writes a new note; 'add' appends to an existing one. Both are kept between openings.
   let mode = $state('new');
+  let pics = $state([]); // pasted or dropped pictures, written to disk only when the note is saved
   let target = $state(null); // { path, title } being added to
   let notes = $state([]);
   let query = $state('');
@@ -63,15 +65,36 @@
       .map((l) => (/^https?:\/\/\S+$/.test(l) ? `<div data-link-card="${escAttr(l)}">${escAttr(new URL(l).hostname.replace(/^www\./, ''))}</div>` : l))
       .join('\n\n');
 
+  function addPics(files) {
+    const found = [...files].filter(isPicture);
+    pics = [...pics, ...found.map((file) => ({ file, url: URL.createObjectURL(file) }))];
+    return found.length > 0;
+  }
+  const onPaste = (e) => { if (addPics(e.clipboardData?.files ?? [])) e.preventDefault(); };
+  const onDrop = (e) => { e.preventDefault(); addPics(e.dataTransfer?.files ?? []); box?.focus(); };
+  function dropPic(i) {
+    URL.revokeObjectURL(pics[i].url);
+    pics = pics.filter((_, j) => j !== i);
+    box?.focus();
+  }
+
+  // the typed lines, then each picture on its own line
+  async function content() {
+    const srcs = [];
+    for (const p of pics) srcs.push(await savePicture(p.file));
+    return [text.trim() && toMarkdown(text), ...srcs.map((s) => `![](${s})`)].filter(Boolean).join('\n\n');
+  }
+
   async function save() {
     if (mode === 'add') return add();
-    if ((!text.trim() && !title.trim()) || saving) return;
-    // the first line is the note's title; a bare "#" keeps it empty so the content isn't promoted to title
-    const body = `# ${title.trim()}`.trim() + (text.trim() ? `
-
-${toMarkdown(text)}` : '');
+    if ((!text.trim() && !title.trim() && !pics.length) || saving) return;
     error = null;
     try {
+      const md = await content();
+      // the first line is the note's title; a bare "#" keeps it empty so the content isn't promoted to title
+      const body = `# ${title.trim()}`.trim() + (md ? `
+
+${md}` : '');
       await invoke('save_note', { path: null, body, created: new Date().toISOString() });
     } catch (e) {
       error = `Couldn't save: ${e}`;
@@ -83,10 +106,10 @@ ${toMarkdown(text)}` : '');
 
   // the main window does the writing (see append in notes.svelte.js), so an open editor never overwrites it
   async function add() {
-    if (!text.trim() || !target || saving) return;
+    if ((!text.trim() && !pics.length) || !target || saving) return;
     error = null;
     try {
-      await emitTo('main', 'capture-append', { path: target.path, md: toMarkdown(text) });
+      await emitTo('main', 'capture-append', { path: target.path, md: await content() });
     } catch (e) {
       error = `Couldn't save: ${e}`;
       return;
@@ -99,6 +122,8 @@ ${toMarkdown(text)}` : '');
     setTimeout(async () => {
       await win.hide();
       text = title = '';
+      pics.forEach((p) => URL.revokeObjectURL(p.url));
+      pics = [];
       saving = saved = false;
     }, 1100);
   }
@@ -117,7 +142,7 @@ ${toMarkdown(text)}` : '');
 </script>
 
 <div class="capture-stage">
-  <div class="capture" class:saving role="dialog" aria-label="Quick note">
+  <div class="capture" class:saving role="dialog" aria-label="Quick note" tabindex="-1" ondragover={(e) => e.preventDefault()} ondrop={onDrop}>
     <div class="capture-head" data-tauri-drag-region>
       <span class="name" data-tauri-drag-region>Plico</span>
       <div class="modes" role="radiogroup" aria-label="Where this goes">
@@ -126,7 +151,7 @@ ${toMarkdown(text)}` : '');
       </div>
     </div>
     {#if mode === 'new'}
-      <input class="title" bind:value={title} onkeydown={onKey} aria-label="Title" placeholder="Title (optional)">
+      <input class="title" bind:value={title} onkeydown={onKey} onpaste={onPaste} aria-label="Title" placeholder="Title (optional)">
     {:else if target}
       <div class="target"><span class="title">{target.title || 'Untitled'}</span><button class="change" onclick={change}>Change</button></div>
     {/if}
@@ -144,8 +169,15 @@ ${toMarkdown(text)}` : '');
       </div>
     {:else}
       <!-- svelte-ignore a11y_autofocus -->
-      <textarea bind:this={box} bind:value={text} onkeydown={onKey} autofocus aria-label="Quick note text"
-        placeholder={mode === 'add' ? 'Added to the end of this note' : 'A thought, a link, anything'}></textarea>
+      <textarea bind:this={box} bind:value={text} onkeydown={onKey} onpaste={onPaste} autofocus aria-label="Quick note text"
+        placeholder={mode === 'add' ? 'Added to the end of this note' : 'A thought, a link, a screenshot'}></textarea>
+      {#if pics.length}
+        <div class="thumbs">
+          {#each pics as p, i (p.url)}
+            <div class="thumb"><img src={p.url} alt="" /><button aria-label="Remove picture" onclick={() => dropPic(i)}><X size={12} strokeWidth={2} /></button></div>
+          {/each}
+        </div>
+      {/if}
     {/if}
     {#if error}<p class="capture-error" role="alert">{error}</p>{/if}
     <div class="capture-foot">

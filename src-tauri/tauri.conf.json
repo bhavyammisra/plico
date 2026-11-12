@@ -27,6 +27,7 @@
         "label": "capture",
         "url": "index.html?view=capture",
         "title": "Plico quick note",
+        "dragDropEnabled": false,
         "width": 600,
         "height": 290,
         "decorations": false,

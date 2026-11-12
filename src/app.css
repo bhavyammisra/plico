@@ -389,6 +389,14 @@ html.capture-window, html.capture-window body { background: transparent; }
 .picks button small { font-size: 12px; color: var(--ink-3); }
 .picks button[aria-selected="true"] { background: var(--hover); color: var(--ink); }
 .picks .none { padding: 8px; font-size: 14px; color: var(--ink-3); }
+.capture:focus { outline: none; }
+.capture:has(.thumbs) textarea { min-height: 56px; max-height: 92px; }
+.thumbs { display: flex; gap: 8px; padding: 0 16px 10px; overflow-x: auto; }
+.thumb { position: relative; flex: none; }
+.thumb img { display: block; height: 48px; max-width: 120px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+.thumb button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--paper); color: var(--ink-2); border: 1px solid var(--line); opacity: 0; transition: opacity 120ms; }
+.thumb:hover button, .thumb button:focus-visible { opacity: 1; }
 
 /* settings switch */
 .toggle { border: 0; cursor: pointer; }
