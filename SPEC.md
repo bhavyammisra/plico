@@ -218,9 +218,11 @@ Installer: 2.1 MB; app: 5 MB.
 
 Plico is going public (see PRODUCT.md, Business Model and Release). Next, in rough order:
 
-1. Reload on disk changes: watch the notes folder; a note changed by another program (OneDrive,
-   phone sync, a text editor) reloads instead of being overwritten, and if it was being edited at
-   the same moment both versions are kept. Needed before any sync.
+1. Done: reload on disk changes. Rust watches the notes folder (`notify`) and sends changed paths
+   (`disk-changed`); the window reloads them after 300 ms of quiet, ignores its own saves (it
+   compares with the text it last wrote), adds new files, drops deleted ones, and refreshes the
+   folder list. If a note was being edited when another program changed it, the outside version
+   wins in the note and the unsaved text is kept as a new note, with a message.
 2. Screenshots in quick capture: paste or drop a picture into the capture box.
 3. Search text inside pictures, using Windows' built-in offline text recognition, run in the
    background when a picture is added.

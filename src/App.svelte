@@ -14,7 +14,7 @@
   import Settings from './lib/Settings.svelte';
   import { initMedia } from './lib/media.js';
   import {
-    store, load, refresh, append, flushAll, visible, select, create, edit, remove, flush, groupOf, timeOf, stampOf,
+    store, load, refresh, append, diskChanged, flushAll, visible, select, create, edit, remove, flush, groupOf, timeOf, stampOf,
     togglePin, moveTo, newFolder, renameFolder, deleteFolder, loadTrash, restore, deleteForever, daysLeft,
   } from './lib/notes.svelte.js';
 
@@ -170,6 +170,7 @@
     if (win) {
       listen('notes-changed', () => refresh());
       listen('capture-append', ({ payload }) => append(payload.path, payload.md));
+      listen('disk-changed', ({ payload }) => diskChanged(payload));
       // Quit from the tray: save anything still pending, then exit
       listen('quit-requested', async () => { await flushAll(); if (vault.unlocked) await V.lock(); invoke('quit'); });
     }

@@ -12,6 +12,7 @@ const notInPreview = async () => { throw new Error('Folders and Recently deleted
 const api = inTauri
   ? {
       list: () => invoke('list_notes'),
+      read: (path) => invoke('read_note', { path }),
       save: (path, body, created, opts = {}) => invoke('save_note', { path, body, created, ...opts }),
       trash: (path) => invoke('trash_note', { path }),
       folders: () => invoke('list_folders'),
@@ -25,6 +26,7 @@ const api = inTauri
     }
   : {
       list: async () => fake.all(),
+      read: async (path) => fake.all().find((n) => n.path === path) ?? null,
       async save(path, body, created, opts = {}) {
         const list = fake.all().filter((n) => n.path !== path);
         const note = { path: path ?? `${crypto.randomUUID()}.md`, body, created, modified: opts.modified ?? new Date().toISOString(), pinned: !!opts.pinned };
@@ -49,7 +51,7 @@ export const store = $state({ notes: [], currentId: null, query: '', loaded: fal
 let nextId = 1;
 
 const folderOf = (path) => (path?.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null);
-const decorate = (n) => ({ ...n, pinned: !!n.pinned, folder: folderOf(n.path), id: nextId++, title: titleOf(n.body), preview: previewOf(n.body), rev: 0, queue: Promise.resolve() });
+const decorate = (n) => ({ ...n, pinned: !!n.pinned, folder: folderOf(n.path), id: nextId++, title: titleOf(n.body), preview: previewOf(n.body), rev: 0, saved: n.body, queue: Promise.resolve() });
 const fail = (what) => (e) => { console.error(what, e); store.error = `${what}: ${e}`; };
 
 export async function load() {
@@ -60,8 +62,9 @@ export async function load() {
 
 /** Picks up notes written elsewhere (quick capture) without disturbing the one being edited. */
 export async function refresh() {
-  const known = new Set(store.notes.map((n) => n.path));
-  const fresh = (await api.list()).filter((n) => !known.has(n.path)).map(decorate);
+  const list = await api.list();
+  const known = new Set(store.notes.map((n) => n.path)); // after the await, so a note added meanwhile isn't doubled
+  const fresh = list.filter((n) => !known.has(n.path)).map(decorate);
   if (!fresh.length) return;
   store.notes = [...fresh, ...store.notes];
   if (store.currentId == null) store.currentId = sorted(fresh)[0].id;
@@ -110,15 +113,59 @@ export function flush(note) {
       // pinning isn't an edit, so it keeps the note's time and place in the list
       const keep = note.keepTime ? note.modified : undefined;
       note.keepTime = false;
-      const saved = await api.save(note.path, note.body, note.created, { pinned: note.pinned, folder: note.folder, modified: keep });
+      const body = note.body;
+      const saved = await api.save(note.path, body, note.created, { pinned: note.pinned, folder: note.folder, modified: keep });
       note.path = saved.path;
       note.modified = saved.modified;
+      note.saved = body; // what the file now holds, so our own write isn't mistaken for an outside change
     } catch (e) {
       console.error('Could not save note', e);
       store.error = `Couldn't save "${note.title || 'Untitled'}". Your text is still here; it will retry on the next edit.`;
     }
   });
   return note.queue;
+}
+
+// ---- changes made outside Plico (OneDrive, phone sync, a text editor) ----
+let pendingPaths = new Set(), diskTimer = null, diskQueue = Promise.resolve();
+
+/** Called with paths the folder watcher saw change; waits for the burst to settle, then reloads them. */
+export function diskChanged(paths) {
+  paths.forEach((p) => pendingPaths.add(p));
+  clearTimeout(diskTimer);
+  diskTimer = setTimeout(() => {
+    const batch = [...pendingPaths];
+    pendingPaths = new Set();
+    diskQueue = diskQueue.then(() => applyDiskChanges(batch)).catch(fail("Couldn't reload a note changed outside Plico"));
+  }, 300);
+}
+
+export async function applyDiskChanges(paths) {
+  await Promise.all(store.notes.map((n) => n.queue)); // our own saves settle first, so their new paths are known
+  if (paths.some((p) => !p.endsWith('.md'))) store.folders = await api.folders();
+  for (const path of paths.filter((p) => p.endsWith('.md'))) {
+    const fresh = await api.read(path);
+    const note = store.notes.find((n) => n.path === path);
+    if (!note) {
+      if (fresh && !store.notes.some((n) => n.path === path)) store.notes = [decorate(fresh), ...store.notes];
+      continue;
+    }
+    const local = note.body !== note.saved; // typed here but not written yet
+    if (!fresh) {
+      // deleted or renamed elsewhere: unsaved text becomes a new file, otherwise drop it from the list
+      if (local) { note.path = null; note.dirty = true; flush(note); }
+      else await remove(note, { skipTrash: true });
+      continue;
+    }
+    if (fresh.body === note.saved) continue; // our own write
+    if (local) {
+      create(note.body); // keep both: this edit becomes its own note
+      store.error = `"${note.title || 'Untitled'}" was changed outside Plico while you were editing it. Your version is kept as a separate note.`;
+    }
+    clearTimeout(timers.get(note.id));
+    Object.assign(note, { body: fresh.body, saved: fresh.body, title: titleOf(fresh.body), preview: previewOf(fresh.body), modified: fresh.modified, pinned: !!fresh.pinned, dirty: false });
+    note.rev++; // an open editor shows the new text
+  }
 }
 
 export function select(id) {

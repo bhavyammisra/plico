@@ -168,21 +168,58 @@ fn list_notes(app: tauri::AppHandle) -> Result<Vec<Note>, String> {
     let root = root(&app)?;
     let mut files = Vec::new();
     walk(&root, &mut files);
-    Ok(files
-        .iter()
-        .filter_map(|p| {
-            let (f, body) = split(&fs::read_to_string(p).ok()?);
-            let modified = f.modified.filter(|m| !m.is_empty()).unwrap_or_else(|| mtime(p));
-            Some(Note {
-                path: rel(&root, p),
-                created: f.created.filter(|c| !c.is_empty()).unwrap_or_else(|| modified.clone()),
-                modified,
-                body,
-                pinned: f.pinned,
-            })
-        })
-        .collect())
+    Ok(files.iter().filter_map(|p| note_at(&root, p)).collect())
 }
+
+fn note_at(root: &Path, p: &Path) -> Option<Note> {
+    let (f, body) = split(&fs::read_to_string(p).ok()?);
+    let modified = f.modified.filter(|m| !m.is_empty()).unwrap_or_else(|| mtime(p));
+    Some(Note {
+        path: rel(root, p),
+        created: f.created.filter(|c| !c.is_empty()).unwrap_or_else(|| modified.clone()),
+        modified,
+        body,
+        pinned: f.pinned,
+    })
+}
+
+/// One note as it is on disk now, or nothing if the file is gone.
+#[tauri::command]
+fn read_note(app: tauri::AppHandle, path: String) -> Result<Option<Note>, String> {
+    let root = root(&app)?;
+    Ok(note_at(&root, &inside(&root, &path)?))
+}
+
+/// Notes, and folders, outside Plico's own hidden folders and pictures.
+fn watched(root: &Path, p: &Path) -> bool {
+    p.strip_prefix(root).is_ok_and(|r| {
+        r.components().next().is_some()
+            && !r.components().any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
+            && !r.starts_with("images")
+    }) && p.extension().map_or(true, |x| x == "md")
+}
+
+/// Other programs (OneDrive, phone sync, a text editor) can change the notes folder; tell the main
+/// window which paths changed so it reloads them instead of later saving over them.
+fn watch_notes(app: &tauri::AppHandle, root: PathBuf) -> notify::Result<notify::RecommendedWatcher> {
+    use notify::Watcher;
+    let app = app.clone();
+    let base = root.clone();
+    let mut w = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        let Ok(ev) = res else { return };
+        if ev.kind.is_access() {
+            return;
+        }
+        let paths: Vec<String> = ev.paths.iter().filter(|p| watched(&base, p)).map(|p| rel(&base, p)).collect();
+        if !paths.is_empty() {
+            let _ = app.emit_to("main", "disk-changed", paths);
+        }
+    })?;
+    w.watch(&root, notify::RecursiveMode::Recursive)?;
+    Ok(w)
+}
+
+struct NotesWatcher(#[allow(dead_code)] std::sync::Mutex<notify::RecommendedWatcher>);
 
 /// Writes the note (renaming the file when its title changed) and returns it with its new path.
 /// `folder` places a brand-new note; `modified` keeps the old time for changes that aren't edits (pinning).
@@ -615,6 +652,10 @@ pub fn run() {
             tray(app)?;
             if let Ok(r) = root(app.handle()) {
                 purge_trash(&r);
+                match watch_notes(app.handle(), r) {
+                    Ok(w) => { app.manage(NotesWatcher(std::sync::Mutex::new(w))); }
+                    Err(e) => eprintln!("Can't watch the notes folder for outside changes: {e}"),
+                }
             }
             Ok(())
         })
@@ -640,7 +681,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            list_notes, save_note, trash_note, notes_root, save_image, fetch_title, started_hidden, quit,
+            list_notes, read_note, save_note, trash_note, notes_root, save_image, fetch_title, started_hidden, quit,
             list_trash, restore_note, delete_forever, list_folders, create_folder, rename_folder, delete_folder, move_note,
             vault_status, vault_setup, vault_unlock, vault_lock, vault_set_password, vault_set_question,
             locked_list, locked_save, locked_delete, lock_note, unlock_note
@@ -652,6 +693,20 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn watches_notes_and_folders_only() {
+        let r = Path::new("C:/n");
+        assert!(watched(r, Path::new("C:/n/Idea.md")));
+        assert!(watched(r, Path::new("C:/n/College/Idea.md")));
+        assert!(watched(r, Path::new("C:/n/College")));
+        assert!(!watched(r, Path::new("C:/n/Idea.md.tmp")));
+        assert!(!watched(r, Path::new("C:/n/.trash/Idea.md")));
+        assert!(!watched(r, Path::new("C:/n/.locked/x.note")));
+        assert!(!watched(r, Path::new("C:/n/images/a.png")));
+        assert!(!watched(r, Path::new("C:/n")));
+        assert!(!watched(r, Path::new("C:/elsewhere/Idea.md")));
+    }
 
     #[test]
     fn front_matter_round_trip() {
