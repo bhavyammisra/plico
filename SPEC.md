@@ -241,7 +241,11 @@ Plico is going public (see PRODUCT.md, Business Model and Release). Next, in rou
    show in the accent colour; Ctrl+click one to list its notes. The sidebar's Tags section (shown
    once a tag exists) lists every tag A to Z with counts. Matching ignores capitals; the file keeps
    the text exactly as typed.
-6. Version history: earlier versions of each note kept locally, restorable.
+6. Done: version history. Before a save overwrites a note, its previous text is copied to
+   `.history/<note>/` (at most one copy per 10 minutes of editing, newest 50 kept). The clock icon
+   on a note shows earlier versions read-only, with older and newer arrows and Restore; restoring
+   keeps the current text as a version first, so it can be undone. A note's history is wiped when
+   it moves into Locked or is deleted for good, so no readable copy is left behind.
 7. Export or print a note as PDF.
 8. Release needs: auto-update, first-run intro to the capture shortcut, changeable capture
    shortcut, date and time format from Windows, privacy policy and terms on the website.

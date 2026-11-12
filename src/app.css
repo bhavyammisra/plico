@@ -203,6 +203,7 @@ mark[data-color="grey"], .dot[data-color="grey"] { --hl: #E4DFD5; --hl-ink: #3A3
 .set-row .path { font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .ghost-btn { height: 32px; padding: 0 12px; border-radius: 7px; border: 1px solid var(--line); background: var(--field); font-size: 13px; font-weight: 500; }
 .ghost-btn:hover { background: var(--hover); }
+.ghost-btn:disabled { opacity: .45; pointer-events: none; }
 .swatches { display: flex; gap: 10px; }
 .swatch { display: grid; justify-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); padding: 4px; border-radius: 8px; }
 .swatch i { width: 28px; height: 28px; border-radius: 50%; display: block; box-shadow: 0 0 0 2px var(--paper), 0 0 0 3px transparent; }
@@ -429,7 +430,8 @@ html.capture-window, html.capture-window body { background: transparent; }
 .trash-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: var(--paper);
   border-bottom: 1px solid var(--line); font-size: 13px; color: var(--ink-2); }
 .trash-bar span { margin-right: auto; }
-.trash-bar .ghost-btn { display: inline-flex; align-items: center; gap: 6px; }
+.trash-bar .ghost-btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.icon-btn:disabled { opacity: .35; pointer-events: none; }
 .ghost-btn.danger { background: #C42B1C; border-color: #C42B1C; color: #fff; }
 .trash-bar + .doc { padding-top: 24px; }
 

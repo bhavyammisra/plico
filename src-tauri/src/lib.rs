@@ -1,3 +1,4 @@
+mod history;
 mod ocr;
 mod vault;
 
@@ -260,6 +261,9 @@ fn save_note(
         pinned: pinned.unwrap_or(false),
         folder: None,
     };
+    if let Some(previous) = old.as_ref().and_then(|o| fs::read_to_string(o).ok()).map(|t| split(&t).1).filter(|b| *b != body) {
+        history::keep(&root, &created, &previous, false);
+    }
     write_atomic(&target, &join(&front, &body))?;
     if let Some(old) = old.filter(|o| *o != target) {
         fs::remove_file(old).map_err(|e| e.to_string())?;
@@ -342,7 +346,30 @@ fn restore_note(app: tauri::AppHandle, name: String) -> Result<String, String> {
 #[tauri::command]
 fn delete_forever(app: tauri::AppHandle, name: String) -> Result<(), String> {
     let root = root(&app)?;
-    fs::remove_file(trash_file(&root, &name)?).map_err(|e| e.to_string())
+    let file = trash_file(&root, &name)?;
+    forget_history(&root, &file);
+    fs::remove_file(file).map_err(|e| e.to_string())
+}
+
+fn forget_history(root: &Path, file: &Path) {
+    if let Some(created) = fs::read_to_string(file).ok().and_then(|t| split(&t).0.created) {
+        history::forget(root, &created);
+    }
+}
+
+/// A note's earlier versions, newest first.
+#[tauri::command]
+fn list_versions(app: tauri::AppHandle, created: String) -> Result<Vec<history::Version>, String> {
+    Ok(history::list(&root(&app)?, &created))
+}
+
+/// Keeps the note's current text as a version right now (before an old version replaces it).
+#[tauri::command]
+fn keep_version(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let root = root(&app)?;
+    let (front, body) = split(&fs::read_to_string(inside(&root, &path)?).map_err(|e| e.to_string())?);
+    history::keep(&root, &front.created.unwrap_or_default(), &body, true);
+    Ok(())
 }
 
 /// Notes stay in Recently deleted for 30 days, then they're removed for good.
@@ -351,6 +378,7 @@ fn purge_trash(root: &Path) {
     let cutoff = chrono::Local::now().naive_local() - chrono::Duration::days(30);
     for e in entries.flatten() {
         if deleted_at(&e.file_name().to_string_lossy()).is_some_and(|t| t < cutoff) {
+            forget_history(root, &e.path());
             let _ = fs::remove_file(e.path());
         }
     }
@@ -550,8 +578,9 @@ fn lock_note(app: tauri::AppHandle, state: tauri::State<vault::Vault>, path: Str
     let src = inside(&root, &path)?;
     let (front, body) = split(&fs::read_to_string(&src).map_err(|e| e.to_string())?);
     let created = front.created.unwrap_or_else(|| chrono::Local::now().to_rfc3339());
-    let note = vault::save(&root, &state, None, body, created)?;
+    let note = vault::save(&root, &state, None, body, created.clone())?;
     fs::remove_file(&src).map_err(|e| e.to_string())?;
+    history::forget(&root, &created);
     Ok(note)
 }
 
@@ -693,7 +722,7 @@ pub fn run() {
             list_notes, read_note, picture_texts, save_note, trash_note, notes_root, save_image, fetch_title, started_hidden, quit,
             list_trash, restore_note, delete_forever, list_folders, create_folder, rename_folder, delete_folder, move_note,
             vault_status, vault_setup, vault_unlock, vault_lock, vault_set_password, vault_set_question,
-            locked_list, locked_save, locked_delete, lock_note, unlock_note
+            locked_list, locked_save, locked_delete, lock_note, unlock_note, list_versions, keep_version
         ])
         .run(tauri::generate_context!())
         .expect("error while running Plico");

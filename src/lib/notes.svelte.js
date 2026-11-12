@@ -24,6 +24,8 @@ const api = inTauri
       listTrash: () => invoke('list_trash'),
       restore: (name) => invoke('restore_note', { name }),
       deleteForever: (name) => invoke('delete_forever', { name }),
+      versions: (created) => invoke('list_versions', { created }),
+      keepVersion: (path) => invoke('keep_version', { path }),
     }
   : {
       list: async () => fake.all(),
@@ -39,6 +41,8 @@ const api = inTauri
       folders: async () => [],
       createFolder: notInPreview, renameFolder: notInPreview, deleteFolder: notInPreview, move: notInPreview,
       listTrash: async () => [], restore: notInPreview, deleteForever: notInPreview,
+      versions: async (created) => JSON.parse(localStorage.getItem('plico.fakeVersions') || '{}')[created] ?? [],
+      keepVersion: async () => {},
     };
 
 // the first non-blank line is the title; a bare "#" there (quick capture without a title) means untitled
@@ -123,6 +127,20 @@ export function edit(note, body) {
   note.dirty = true;
   clearTimeout(timers.get(note.id));
   timers.set(note.id, setTimeout(() => flush(note), 400));
+}
+
+/** A note's earlier versions ({ saved, body }), newest first. */
+export async function versionsOf(note) {
+  await flush(note);
+  return note.created ? api.versions(note.created) : [];
+}
+
+/** Puts an old version back; the current text is kept as a version first, so this can be undone too. */
+export async function restoreVersion(note, body) {
+  await flush(note);
+  if (note.path) await api.keepVersion(note.path);
+  edit(note, body);
+  note.rev++;
 }
 
 /** Saves are chained per note so a rename never races the next write. */

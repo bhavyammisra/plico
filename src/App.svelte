@@ -5,7 +5,7 @@
   import { listen } from '@tauri-apps/api/event';
   import {
     Minus, Square, X, PanelLeft, SquarePen, Notebook, Settings as Gear, Search, Maximize2, Minimize2, Trash2,
-    Pin, PinOff, Folder, Hash, FolderInput, Plus, RotateCcw, Check, Lock, LockOpen, FolderOutput,
+    Pin, PinOff, Folder, Hash, FolderInput, Plus, RotateCcw, Check, Lock, LockOpen, FolderOutput, History, ChevronLeft, ChevronRight,
   } from 'lucide-svelte';
   import Locked from './lib/Locked.svelte';
   import * as V from './lib/vault.svelte.js';
@@ -16,7 +16,7 @@
   import { linksIn } from './lib/extensions.js';
   import {
     store, load, refresh, append, diskChanged, haystack, onlyInPicture, allTags, flushAll, visible, select, create, edit, remove, flush, groupOf, timeOf, stampOf,
-    togglePin, moveTo, newFolder, renameFolder, deleteFolder, loadTrash, restore, deleteForever, daysLeft,
+    versionsOf, restoreVersion, togglePin, moveTo, newFolder, renameFolder, deleteFolder, loadTrash, restore, deleteForever, daysLeft,
   } from './lib/notes.svelte.js';
 
   const win = '__TAURI_INTERNALS__' in window ? getCurrentWindow() : null;
@@ -35,6 +35,22 @@
   const inLocked = $derived(store.view === 'locked');
   const keyOf = (n) => (inLocked ? n.key : n.id);
   let confirmLockedDelete = $state(false);
+  let past = $state(null); // { note, list, index } while looking through a note's earlier versions
+
+  async function openHistory(n) {
+    past = { id: n.id, note: n, list: [], index: 0, loading: true };
+    try {
+      const list = await versionsOf(n);
+      if (past?.id === n.id) past = { id: n.id, note: n, list: list.map((v, i) => ({ id: `v${i}`, body: v.body, saved: v.saved, rev: 0 })), index: 0 };
+    } catch (e) { past = null; store.error = `Couldn't read this note's history: ${e}`; }
+  }
+
+  async function putBack() {
+    const { note: n, list, index } = past;
+    past = null;
+    try { await restoreVersion(n, list[index].body); }
+    catch (e) { store.error = `Couldn't restore that version: ${e}`; }
+  }
   const matches = (n, words) => { const hay = haystack(n); return words.every((w) => hay.includes(w)); };
   const searchWords = $derived(store.query.toLowerCase().split(/\s+/).filter(Boolean));
   const items = $derived.by(() => {
@@ -339,6 +355,21 @@
             </div>
             <article class="doc"><Editor note={trashed} readonly /></article>
           {/if}
+        {:else if note && past?.id === note.id}
+          {@const v = past.list[past.index]}
+          <div class="trash-bar">
+            {#if past.loading}<span></span>
+            {:else if v}
+              <span title="Version {past.index + 1} of {past.list.length}">Saved {new Date(v.saved).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+              <button class="icon-btn" aria-label="Older version" title="Older" disabled={past.index === past.list.length - 1} onclick={() => past.index++}><ChevronLeft {...icon} /></button>
+              <button class="icon-btn" aria-label="Newer version" title="Newer" disabled={past.index === 0} onclick={() => past.index--}><ChevronRight {...icon} /></button>
+              <button class="ghost-btn" title="Restore this version (the current text is kept as a version too)" onclick={putBack}><RotateCcw size={14} strokeWidth={1.5} />Restore</button>
+            {:else}
+              <span>No earlier versions yet. Plico keeps one every 10 minutes while you edit.</span>
+            {/if}
+            <button class="icon-btn" aria-label="Close earlier versions" title="Close" onclick={() => (past = null)}><X {...icon} /></button>
+          </div>
+          {#if v}{#key v.id}<article class="doc"><Editor note={v} readonly /></article>{/key}{/if}
         {:else if note}
           <div class="editor-bar">
             <button class="icon-btn" aria-label={note.pinned ? 'Unpin note' : 'Pin note'} aria-pressed={note.pinned} title={note.pinned ? 'Unpin' : 'Pin to the top'} onclick={() => togglePin(note)}>
@@ -357,6 +388,7 @@
                 </div>
               {/if}
             </div>
+            <button class="icon-btn" aria-label="Earlier versions" title="Earlier versions" onclick={() => openHistory(note)}><History {...icon} /></button>
             <button class="icon-btn" aria-label="Focus mode (Ctrl+.)" title="Focus mode  Ctrl+." onclick={() => (focusMode = !focusMode)}>
               {#if focusMode}<Minimize2 {...icon} />{:else}<Maximize2 {...icon} />{/if}
             </button>
