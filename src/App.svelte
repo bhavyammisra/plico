@@ -5,7 +5,7 @@
   import { listen } from '@tauri-apps/api/event';
   import {
     Minus, Square, X, PanelLeft, SquarePen, Notebook, Settings as Gear, Search, Maximize2, Minimize2, Trash2,
-    Pin, PinOff, Folder, FolderInput, Plus, RotateCcw, Check, Lock, LockOpen, FolderOutput,
+    Pin, PinOff, Folder, Hash, FolderInput, Plus, RotateCcw, Check, Lock, LockOpen, FolderOutput,
   } from 'lucide-svelte';
   import Locked from './lib/Locked.svelte';
   import * as V from './lib/vault.svelte.js';
@@ -15,7 +15,7 @@
   import { initMedia } from './lib/media.js';
   import { linksIn } from './lib/extensions.js';
   import {
-    store, load, refresh, append, diskChanged, haystack, onlyInPicture, flushAll, visible, select, create, edit, remove, flush, groupOf, timeOf, stampOf,
+    store, load, refresh, append, diskChanged, haystack, onlyInPicture, allTags, flushAll, visible, select, create, edit, remove, flush, groupOf, timeOf, stampOf,
     togglePin, moveTo, newFolder, renameFolder, deleteFolder, loadTrash, restore, deleteForever, daysLeft,
   } from './lib/notes.svelte.js';
 
@@ -74,6 +74,7 @@
   const trashed = $derived(store.trash.find((t) => t.id === store.trashId) ?? null);
   const locked = $derived(vault.notes.find((n) => n.key === vault.currentId) ?? null);
   const count = (folder) => store.notes.filter((n) => n.folder === folder).length;
+  const tags = $derived(allTags());
   const saved = (n) => n.path || n.body.trim();
 
   // contour patch per note: a stable offset into the map
@@ -253,6 +254,15 @@
           onkeydown={(e) => { if (e.key === 'Enter') finishNaming(); if (e.key === 'Escape') naming = null; }} onblur={finishNaming} />
       {/if}
 
+      {#if tags.length}
+        <div class="side-head">Tags</div>
+        {#each tags as [t, c] (t)}
+          <button class="nav" aria-current={page === 'notes' && store.view === `tag:${t}`} onclick={() => show(`tag:${t}`)}>
+            <Hash {...icon} /><span class="label">{t}</span><span class="count">{c}</span>
+          </button>
+        {/each}
+      {/if}
+
       <div class="side-head">Private</div>
       <button class="nav" aria-current={page === 'notes' && inLocked} onclick={() => show('locked')}>
         {#if vault.unlocked}<LockOpen {...icon} />{:else}<Lock {...icon} />{/if}Locked
@@ -354,7 +364,7 @@
           </div>
           <article class="doc">
             <div class="stamp">{stampOf(note)}{#if note.folder} · {note.folder}{/if}</div>
-            <Editor {note} onchange={(md) => edit(note, md)} onopenlink={openNoteLink}
+            <Editor {note} onchange={(md) => edit(note, md)} onopenlink={openNoteLink} ontag={(t) => show(`tag:${t}`)}
               linkTitles={() => store.notes.filter((n) => n !== note && n.title).map((n) => n.title)} />
             {#if backlinks.length}
               <nav class="backlinks" aria-label="Linked from">

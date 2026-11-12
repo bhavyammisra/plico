@@ -79,6 +79,14 @@ export const flushAll = () => Promise.all(store.notes.map(flush));
 export const sorted = (notes) => [...notes].sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
 export const current = () => store.notes.find((n) => n.id === store.currentId) ?? null;
 
+/**
+ * A tag is # followed by a word with at least one letter (#ideas, #work/college), after a space or at
+ * the start of a line, so headings ("# Title"), numbers (#1) and links (page#part) aren't tags.
+ * The saved file may hold it as \#tag (Markdown escaping at the start of a line).
+ */
+export const TAG = /(?:^|[\s(])\\?(#[\p{L}\p{M}\p{N}_\-/]*\p{L}[\p{L}\p{M}\p{N}_\-/]*)/gu; // \p{M}: vowel signs in Hindi and similar scripts
+export const tagsIn = (body) => [...new Set([...body.matchAll(TAG)].map((m) => m[1].slice(1).toLowerCase()))];
+
 // pictures are written as ![](images/x.png); search also covers the text read from them
 const picturesIn = (body) => [...body.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)].map((m) => m[1]);
 
@@ -96,6 +104,7 @@ export function visible() {
   let list = sorted(store.notes);
   if (v === 'pinned') list = list.filter((n) => n.pinned);
   else if (v.startsWith('folder:')) list = list.filter((n) => n.folder === v.slice(7));
+  else if (v.startsWith('tag:')) list = list.filter((n) => tagsIn(n.body).includes(v.slice(4)));
   if (!words.length) return list;
   return list.filter((n) => {
     const hay = haystack(n);
@@ -191,7 +200,15 @@ export function select(id) {
   store.currentId = id;
 }
 
+/** Every tag in use, with how many notes have it, A to Z. */
+export function allTags() {
+  const counts = new Map();
+  for (const n of store.notes) for (const t of tagsIn(n.body)) counts.set(t, (counts.get(t) ?? 0) + 1);
+  return [...counts].sort((a, b) => a[0].localeCompare(b[0]));
+}
+
 export function create(body = '') {
+  if (store.view.startsWith('tag:')) store.view = 'all'; // a new note has no tag yet, so it wouldn't show in the tag's list
   const now = new Date().toISOString();
   const note = decorate({ path: null, body, created: now, modified: now });
   note.folder = store.view.startsWith('folder:') ? store.view.slice(7) : null;

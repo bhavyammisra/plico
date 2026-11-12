@@ -18,12 +18,13 @@
     Bold, Italic, Underline as U, Strikethrough, Link as LinkIcon,
     Baseline, Heading1, Heading2, Heading3, Pilcrow, List, ListOrdered, ListChecks, Quote, Minus, Table as TableIcon, Image as ImageIcon, FileText, Plus,
   } from 'lucide-svelte';
-  import { NoteImage, LinkCard, SlashMenu, NoteLink, TrailingParagraph, TextColor, TEXT_COLORS, ColorHighlight, HIGHLIGHT_COLORS } from './extensions.js';
+  import { NoteImage, LinkCard, SlashMenu, NoteLink, Tags, TrailingParagraph, TextColor, TEXT_COLORS, ColorHighlight, HIGHLIGHT_COLORS } from './extensions.js';
   import { savePicture, isPicture, fetchTitle, openLink, hostOf } from './media.js';
 
   let {
     note, onchange = () => {}, readonly = false, pictures = true, onnotice = () => {},
     linkTitles = () => [], onopenlink = () => {}, // other notes' titles for [[ links, and opening one
+    ontag = () => {}, // Ctrl+click on a #tag
   } = $props();
 
   // [[ picker: matching note titles, plus making a link to a note that doesn't exist yet
@@ -113,7 +114,7 @@
         Table.configure({ resizable: false }), TableRow, TableHeader, TableCell,
         NoteImage, LinkCard, TrailingParagraph,
         SlashMenu.configure({ items: slashItems, onState: (s) => (slash = s) }),
-        NoteLink,
+        NoteLink, Tags,
         SlashMenu.extend({ name: 'linkMenu' }).configure({ char: '[[', allowSpaces: true, items: linkItems, onState: (s) => (slash = s) }),
         BubbleMenu.configure({
           pluginKey: 'formatBar', element: bar, tippyOptions: { duration: 120, placement: 'top', maxWidth: 'none' },
@@ -154,6 +155,8 @@
         handleClick(view, pos, event) {
           const noteLink = event.target.closest?.('a[data-note-link]');
           if (noteLink) { onopenlink(noteLink.getAttribute('data-note-link')); return true; }
+          const tag = event.target.closest?.('.tag[data-tag]');
+          if (tag && (event.ctrlKey || event.metaKey)) { ontag(tag.getAttribute('data-tag')); return true; }
           const a = event.target.closest?.('a[href]');
           if (a && (event.ctrlKey || event.metaKey) && !a.classList.contains('linkline')) { openLink(a.href); return true; }
           return false;

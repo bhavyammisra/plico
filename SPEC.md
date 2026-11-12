@@ -236,7 +236,11 @@ Plico is going public (see PRODUCT.md, Business Model and Release). Next, in rou
    underlined accent text; clicking one opens that note, or starts it if it doesn't exist. Notes
    that link to the open note are listed under "Linked from" at the foot of the page (titles match
    ignoring capitals). Renaming a note doesn't update links to it yet. No graph view.
-5. Tags: `#tag` in the text, a tag list in the sidebar.
+5. Done: tags. `#tag` anywhere in the text (a word with at least one letter, after a space or at
+   the start of a line, so headings, `#12` and `page#part` aren't tags; works in Hindi too). Tags
+   show in the accent colour; Ctrl+click one to list its notes. The sidebar's Tags section (shown
+   once a tag exists) lists every tag A to Z with counts. Matching ignores capitals; the file keeps
+   the text exactly as typed.
 6. Version history: earlier versions of each note kept locally, restorable.
 7. Export or print a note as PDF.
 8. Release needs: auto-update, first-run intro to the capture shortcut, changeable capture

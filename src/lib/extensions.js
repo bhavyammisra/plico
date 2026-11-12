@@ -1,9 +1,11 @@
 import { Node, Mark, Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import Image from '@tiptap/extension-image';
 import Highlight from '@tiptap/extension-highlight';
 import Suggestion from '@tiptap/suggestion';
 import { resolveSrc, hostOf, openLink } from './media.js';
+import { TAG } from './notes.svelte.js';
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -185,3 +187,28 @@ export const NoteLink = Node.create({
 
 /** Titles a note links to, from its Markdown. */
 export const linksIn = (body) => [...body.matchAll(/\[\[([^\[\]|\n]+)\]\]/g)].map((m) => m[1].trim().toLowerCase());
+
+/** Colours #tags in the text (the text itself is unchanged); Ctrl+click is handled by the editor. */
+export const Tags = Extension.create({
+  name: 'tags',
+  addProseMirrorPlugins() {
+    const find = (doc) => {
+      const decos = [];
+      doc.descendants((node, pos, parent) => {
+        if (!node.isText || parent?.type.name === 'codeBlock' || node.marks.some((m) => m.type.name === 'code' || m.type.name === 'link')) return;
+        for (const m of node.text.matchAll(TAG)) {
+          const start = pos + m.index + m[0].length - m[1].length;
+          decos.push(Decoration.inline(start, start + m[1].length, { class: 'tag', 'data-tag': m[1].slice(1).toLowerCase(), title: 'Ctrl+click to see notes with this tag' }));
+        }
+      });
+      return DecorationSet.create(doc, decos);
+    };
+    return [
+      new Plugin({
+        key: new PluginKey('tags'),
+        state: { init: (_, { doc }) => find(doc), apply: (tr, old) => (tr.docChanged ? find(tr.doc) : old) },
+        props: { decorations(state) { return this.getState(state); } },
+      }),
+    ];
+  },
+});

@@ -454,3 +454,4 @@ html.capture-window, html.capture-window body { background: transparent; }
 .backlinks button:hover { background: var(--hover); color: var(--ink); }
 .backlinks button span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .backlinks button small { font-size: 12px; color: var(--ink-3); }
+.prose .tag { color: var(--accent); }
