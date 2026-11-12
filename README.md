@@ -22,15 +22,23 @@ Plico is one place to drop anything: a passing thought, a link, a screenshot, or
 formatted note. It opens straight onto your last note, works fully offline, and stores every note
 as an ordinary Markdown file you can open in any editor.
 
-- **Quick capture from anywhere.** Press `Ctrl+Shift+Space` in any app, type, press Enter. The box
-  folds away and the note is saved.
+- **Quick capture from anywhere.** Press `Ctrl+Shift+Space` in any app (or your own keys, set in
+  Settings), type, press Enter. Start a new note or add to an existing one, and paste or drop
+  screenshots straight in.
 - **Writes like a modern editor.** Headings, bold, italic, underline, highlight, lists, checklists,
   quotes, tables and dividers. Type `/` for a block menu, or use Markdown shortcuts like `##`.
 - **Pictures and links.** Paste or drag in screenshots. Paste a link on its own line and it becomes
   a card with the page's title.
 - **Smart typography.** Straight quotes turn curly, `->` becomes an arrow, `...` becomes an ellipsis.
-- **Search, pins and folders.** Keyword search as you type, pinned notes at the top, real folders
-  on disk, and notes grouped by date.
+- **Search, pins and folders.** Keyword search as you type (it also finds text inside
+  screenshots, read on your laptop by Windows), pinned notes at the top, real folders on disk,
+  and notes grouped by date.
+- **Links and tags.** Type `[[` to link another note; each note lists the notes that link to it.
+  Write `#tags` anywhere and find them in the sidebar.
+- **Version history.** Earlier versions of each note are kept on your laptop and can be restored.
+- **Print or save as PDF** for any note (`Ctrl+P`).
+- **Plays well with other apps.** Edit a note in another editor or sync the folder with OneDrive,
+  and Plico picks up the change.
 - **Recently deleted.** Deleted notes wait 30 days and can be restored into the folder they came from.
 - **Locked folder.** Encrypted notes that open with a password, or with a security question if
   you forget it.
@@ -66,7 +74,9 @@ installer fetches it if it's missing.
 | `Ctrl+1` / `2` / `3` | Heading 1 / 2 / 3 |
 | `Ctrl+0` | Body text |
 | `Ctrl+B` / `I` / `U` | Bold / italic / underline |
+| `Ctrl+P` | Print or save the note as PDF |
 | `Ctrl+.` | Focus mode |
+| `[[` | Link to another note |
 | `Ctrl+\` | Show or hide the sidebar |
 | `/` | Block menu (headings, lists, table, picture...) |
 | `Delete` in the list | Move the note to Recently deleted |
@@ -82,6 +92,8 @@ Documents\Plico\
   images\                 pictures pasted into notes
   .trash\                 Recently deleted (kept 30 days)
   .locked\                the encrypted locked folder
+  .history\               earlier versions of each note
+  .plico\                 text read from pictures, for search
 ```
 
 Each note is Markdown with a short header for its dates and pin:
