@@ -16,12 +16,25 @@
   import { Markdown } from 'tiptap-markdown';
   import {
     Bold, Italic, Underline as U, Strikethrough, Link as LinkIcon,
-    Baseline, Heading1, Heading2, Heading3, Pilcrow, List, ListOrdered, ListChecks, Quote, Minus, Table as TableIcon, Image as ImageIcon,
+    Baseline, Heading1, Heading2, Heading3, Pilcrow, List, ListOrdered, ListChecks, Quote, Minus, Table as TableIcon, Image as ImageIcon, FileText, Plus,
   } from 'lucide-svelte';
-  import { NoteImage, LinkCard, SlashMenu, TrailingParagraph, TextColor, TEXT_COLORS, ColorHighlight, HIGHLIGHT_COLORS } from './extensions.js';
+  import { NoteImage, LinkCard, SlashMenu, NoteLink, TrailingParagraph, TextColor, TEXT_COLORS, ColorHighlight, HIGHLIGHT_COLORS } from './extensions.js';
   import { savePicture, isPicture, fetchTitle, openLink, hostOf } from './media.js';
 
-  let { note, onchange = () => {}, readonly = false, pictures = true, onnotice = () => {} } = $props();
+  let {
+    note, onchange = () => {}, readonly = false, pictures = true, onnotice = () => {},
+    linkTitles = () => [], onopenlink = () => {}, // other notes' titles for [[ links, and opening one
+  } = $props();
+
+  // [[ picker: matching note titles, plus making a link to a note that doesn't exist yet
+  function linkItems(query) {
+    const q = query.trim().toLowerCase();
+    const titles = [...new Set(linkTitles())].filter((t) => t.toLowerCase().includes(q)).slice(0, 8);
+    const link = (title) => (c) => c.insertContent([{ type: 'noteLink', attrs: { title } }, { type: 'text', text: ' ' }]).run();
+    const items = titles.map((t) => ({ label: t, icon: FileText, run: link(t) }));
+    if (q && !titles.some((t) => t.toLowerCase() === q)) items.push({ label: `New note "${query.trim()}"`, icon: Plus, run: link(query.trim()) });
+    return items;
+  }
 
   let host, bar, tableBar, pictureBar, picker;
   let editor = $state(null);
@@ -100,6 +113,8 @@
         Table.configure({ resizable: false }), TableRow, TableHeader, TableCell,
         NoteImage, LinkCard, TrailingParagraph,
         SlashMenu.configure({ items: slashItems, onState: (s) => (slash = s) }),
+        NoteLink,
+        SlashMenu.extend({ name: 'linkMenu' }).configure({ char: '[[', allowSpaces: true, items: linkItems, onState: (s) => (slash = s) }),
         BubbleMenu.configure({
           pluginKey: 'formatBar', element: bar, tippyOptions: { duration: 120, placement: 'top', maxWidth: 'none' },
           shouldShow: ({ state }) => !state.selection.empty && !state.selection.node,
@@ -137,6 +152,8 @@
           return true;
         },
         handleClick(view, pos, event) {
+          const noteLink = event.target.closest?.('a[data-note-link]');
+          if (noteLink) { onopenlink(noteLink.getAttribute('data-note-link')); return true; }
           const a = event.target.closest?.('a[href]');
           if (a && (event.ctrlKey || event.metaKey) && !a.classList.contains('linkline')) { openLink(a.href); return true; }
           return false;
@@ -263,7 +280,7 @@
 
 {#if slash?.items.length}
   <div class="slash" role="listbox" aria-label="Insert block" style:left="{slash.rect?.left ?? 0}px" style:top="{(slash.rect?.bottom ?? 0) + 6}px">
-    {#each slash.items as item, i (item.label)}
+    {#each slash.items as item, i (i)}
       <button role="option" aria-selected={i === slash.index} onmousedown={keep} onclick={() => slash.pick(i)}>
         <item.icon {...icon} />{item.label}
       </button>

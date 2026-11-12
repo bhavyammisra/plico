@@ -66,18 +66,24 @@ export const LinkCard = Node.create({
   }),
 });
 
-/** The `/` menu. `onState` receives { items, index, rect, pick } while open and null when closed. */
+/**
+ * The `/` menu, and (configured with `char: '[['`) the note link picker. `items` is a list or a
+ * function of the typed query. `onState` receives { items, index, rect, pick } while open and null when closed.
+ */
 export const SlashMenu = Extension.create({
   name: 'slashMenu',
-  addOptions: () => ({ items: [], onState: () => {} }),
+  addOptions: () => ({ items: [], onState: () => {}, char: '/', allowSpaces: false }),
   addProseMirrorPlugins() {
-    const { items, onState } = this.options;
+    const { items, onState, char, allowSpaces } = this.options;
     let state = null;
     return [
       Suggestion({
         editor: this.editor,
-        char: '/',
-        items: ({ query }) => items.filter((i) => (i.label + ' ' + (i.keys ?? '')).toLowerCase().includes(query.toLowerCase())),
+        char,
+        allowSpaces,
+        pluginKey: new PluginKey(this.name),
+        items: ({ query }) => (typeof items === 'function' ? items(query)
+          : items.filter((i) => (i.label + ' ' + (i.keys ?? '')).toLowerCase().includes(query.toLowerCase()))),
         command: ({ editor, range, props }) => props.run(editor.chain().focus().deleteRange(range), editor),
         render: () => ({
           onStart: (p) => { state = { items: p.items, index: 0, rect: p.clientRect?.(), pick: (i) => p.command(p.items[i]) }; onState(state); },
@@ -140,3 +146,42 @@ export const ColorHighlight = Highlight.extend({
     color: { default: null, parseHTML: (el) => el.getAttribute('data-color'), renderHTML: (a) => (a.color ? { 'data-color': a.color } : {}) },
   }),
 }).configure({ multicolor: true });
+
+/**
+ * A link to another note by its title, written in the file as `[[Title]]` (the same as Obsidian),
+ * shown as a clickable chip. Clicking is handled by the editor (`onopenlink`).
+ */
+export const NoteLink = Node.create({
+  name: 'noteLink',
+  group: 'inline',
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes: () => ({ title: { default: '' } }),
+  parseHTML: () => [{ tag: 'a[data-note-link]', priority: 60, getAttrs: (el) => ({ title: el.getAttribute('data-note-link') }) }],
+  renderHTML: ({ node }) => ['a', { 'data-note-link': node.attrs.title, class: 'note-link', title: 'Open this note' }, node.attrs.title],
+  addStorage: () => ({
+    markdown: {
+      serialize(state, node) { state.write(`[[${node.attrs.title}]]`); },
+      parse: {
+        // turns [[Title]] in the file into the chip; titles can't contain brackets, | or new lines
+        setup(md) {
+          md.inline.ruler.before('link', 'note_link', (st, silent) => {
+            const m = /^\[\[([^\[\]|\n]+)\]\]/.exec(st.src.slice(st.pos));
+            if (!m) return false;
+            if (!silent) {
+              const t = st.push('html_inline', '', 0);
+              const title = esc(m[1].trim());
+              t.content = `<a data-note-link="${title}">${title}</a>`;
+            }
+            st.pos += m[0].length;
+            return true;
+          });
+        },
+      },
+    },
+  }),
+});
+
+/** Titles a note links to, from its Markdown. */
+export const linksIn = (body) => [...body.matchAll(/\[\[([^\[\]|\n]+)\]\]/g)].map((m) => m[1].trim().toLowerCase());

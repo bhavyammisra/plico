@@ -231,7 +231,11 @@ Plico is going public (see PRODUCT.md, Business Model and Release). Next, in rou
    reads each picture in `images/` once, in the background (at start-up for any not read yet, and
    after each new picture). Results are cached in `.plico/picture-text.json`. Search matches words
    in a note's pictures; a note found only that way shows "Found in a picture" in the list.
-4. Links between notes with `[[`, and a "Linked from" list at the bottom of a note. No graph view.
+4. Done: links between notes. Typing `[[` opens a picker of note titles (or "New note" for a title
+   that doesn't exist yet). Links are saved as `[[Title]]`, the same as Obsidian, and shown as
+   underlined accent text; clicking one opens that note, or starts it if it doesn't exist. Notes
+   that link to the open note are listed under "Linked from" at the foot of the page (titles match
+   ignoring capitals). Renaming a note doesn't update links to it yet. No graph view.
 5. Tags: `#tag` in the text, a tag list in the sidebar.
 6. Version history: earlier versions of each note kept locally, restorable.
 7. Export or print a note as PDF.

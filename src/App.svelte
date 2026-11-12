@@ -13,6 +13,7 @@
   import Editor from './lib/Editor.svelte';
   import Settings from './lib/Settings.svelte';
   import { initMedia } from './lib/media.js';
+  import { linksIn } from './lib/extensions.js';
   import {
     store, load, refresh, append, diskChanged, haystack, onlyInPicture, flushAll, visible, select, create, edit, remove, flush, groupOf, timeOf, stampOf,
     togglePin, moveTo, newFolder, renameFolder, deleteFolder, loadTrash, restore, deleteForever, daysLeft,
@@ -52,6 +53,24 @@
     return out;
   });
   const note = $derived(store.notes.find((n) => n.id === store.currentId) ?? null);
+
+  // notes whose text has a [[link]] to the open note's title
+  const backlinks = $derived.by(() => {
+    const t = note?.title.trim().toLowerCase();
+    if (!t) return [];
+    return store.notes.filter((n) => n !== note && linksIn(n.body).includes(t))
+      .sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
+  });
+
+  /** Opens the note a [[link]] names, or starts it if there isn't one yet. */
+  function openNoteLink(title) {
+    const t = title.trim().toLowerCase();
+    const target = store.notes.find((n) => n.title.trim().toLowerCase() === t);
+    store.query = '';
+    if (!target) return create(`# ${title.trim()}`);
+    if (store.view !== 'all' && !(store.view === `folder:${target.folder}`)) store.view = 'all';
+    select(target.id);
+  }
   const trashed = $derived(store.trash.find((t) => t.id === store.trashId) ?? null);
   const locked = $derived(vault.notes.find((n) => n.key === vault.currentId) ?? null);
   const count = (folder) => store.notes.filter((n) => n.folder === folder).length;
@@ -335,7 +354,16 @@
           </div>
           <article class="doc">
             <div class="stamp">{stampOf(note)}{#if note.folder} · {note.folder}{/if}</div>
-            <Editor {note} onchange={(md) => edit(note, md)} />
+            <Editor {note} onchange={(md) => edit(note, md)} onopenlink={openNoteLink}
+              linkTitles={() => store.notes.filter((n) => n !== note && n.title).map((n) => n.title)} />
+            {#if backlinks.length}
+              <nav class="backlinks" aria-label="Linked from">
+                <div class="label">Linked from</div>
+                {#each backlinks as b (b.id)}
+                  <button onclick={() => select(b.id)}><span>{b.title}</span><small>{timeOf(b.modified)}</small></button>
+                {/each}
+              </nav>
+            {/if}
           </article>
         {:else if store.loaded}
           <div class="doc-empty">Press Ctrl+N to start a note.</div>
