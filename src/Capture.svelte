@@ -3,7 +3,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { listen, emitTo } from '@tauri-apps/api/event';
-  import { Check, X } from 'lucide-svelte';
+  import { Check, X, SquarePen, ListPlus, ChevronLeft } from 'lucide-svelte';
   import { savePicture, isPicture } from './lib/media.js';
   import './lib/settings.svelte.js'; // same theme and accent as the main window
   import { titleOf, sorted, timeOf } from './lib/notes.svelte.js';
@@ -17,6 +17,9 @@
   let box = $state(), findBox = $state(), picksEl = $state();
   // 'new' writes a new note; 'add' appends to an existing one. Both are kept between openings.
   let mode = $state('new');
+  // each opening starts on the two choices, unless a draft is waiting
+  let choosing = $state(true);
+  let tiles = $state();
   let pics = $state([]); // pasted or dropped pictures, written to disk only when the note is saved
   let target = $state(null); // { path, title } being added to
   let notes = $state([]);
@@ -32,10 +35,11 @@
     catch (e) { error = `Couldn't read your notes: ${e}`; }
   }
 
-  const focusNow = () => requestAnimationFrame(() => (mode === 'add' && !target ? findBox : box)?.focus());
+  const focusNow = () => requestAnimationFrame(() => (choosing ? tiles?.querySelector('[aria-checked="true"]') : mode === 'add' && !target ? findBox : box)?.focus());
 
   function setMode(m) {
     mode = m;
+    choosing = false;
     if (m === 'add' && !target) { query = ''; pick = 0; loadNotes(); }
     focusNow();
   }
@@ -128,13 +132,28 @@ ${md}` : '');
     }, 1100);
   }
 
+  function onChooseKey(e) {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); mode = mode === 'new' ? 'add' : 'new'; focusNow(); }
+    else if (e.key === 'Enter') { e.preventDefault(); setMode(mode); }
+    else if (e.key === 'Escape') { e.preventDefault(); win.hide(); }
+    // typing straight away starts a new note, so the choice never slows a quick thought down
+    else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); text += e.key; setMode('new'); }
+  }
+
+  function back() { choosing = true; focusNow(); }
+
   function onKey(e) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
     else if (e.key === 'Escape') { e.preventDefault(); win.hide(); }
   }
 
   onMount(() => {
-    const offOpen = listen('capture-open', () => { error = null; if (mode === 'add' && !target) loadNotes(); focusNow(); });
+    const offOpen = listen('capture-open', () => {
+      error = null;
+      choosing = !text.trim() && !title.trim() && !pics.length;
+      if (mode === 'add' && !target) loadNotes();
+      focusNow();
+    });
     // clicking away puts it away, like Windows search
     const offFocus = win.onFocusChanged(({ payload: focused }) => { if (!focused && !saving) win.hide(); });
     return () => { offOpen.then((f) => f()); offFocus.then((f) => f()); };
@@ -145,13 +164,22 @@ ${md}` : '');
   <div class="capture" class:saving role="dialog" aria-label="Quick note" tabindex="-1" ondragover={(e) => e.preventDefault()} ondrop={onDrop}>
     <div class="capture-head" data-tauri-drag-region>
       <span class="name" data-tauri-drag-region>Plico</span>
-      <div class="modes" role="radiogroup" aria-label="Where this goes">
-        <button role="radio" aria-checked={mode === 'new'} onclick={() => setMode('new')}>New note</button>
-        <button role="radio" aria-checked={mode === 'add'} onclick={() => setMode('add')}>Add to a note</button>
-      </div>
+      {#if !choosing}
+        <button class="where" onclick={back} title="Choose again"><ChevronLeft size={14} strokeWidth={1.5} />{mode === 'new' ? 'New note' : 'Add to a note'}</button>
+      {/if}
     </div>
+    {#if choosing}
+      <div class="choices" role="radiogroup" aria-label="Where this goes" bind:this={tiles}>
+        <button role="radio" aria-checked={mode === 'new'} tabindex={mode === 'new' ? 0 : -1} onclick={() => setMode('new')} onkeydown={onChooseKey}>
+          <SquarePen size={22} strokeWidth={1.5} /><span>New note</span>
+        </button>
+        <button role="radio" aria-checked={mode === 'add'} tabindex={mode === 'add' ? 0 : -1} onclick={() => setMode('add')} onkeydown={onChooseKey}>
+          <ListPlus size={22} strokeWidth={1.5} /><span>Add to a note</span>
+        </button>
+      </div>
+    {:else}
     {#if mode === 'new'}
-      <input class="title" bind:value={title} onkeydown={onKey} onpaste={onPaste} aria-label="Title" placeholder="Title (optional)">
+      <input class="title" bind:value={title} onkeydown={onKey} onpaste={onPaste} aria-label="Title" placeholder="Title">
     {:else if target}
       <div class="target"><span class="title">{target.title || 'Untitled'}</span><button class="change" onclick={change}>Change</button></div>
     {/if}
@@ -168,8 +196,7 @@ ${md}` : '');
         {/each}
       </div>
     {:else}
-      <!-- svelte-ignore a11y_autofocus -->
-      <textarea bind:this={box} bind:value={text} onkeydown={onKey} onpaste={onPaste} autofocus aria-label="Quick note text"
+      <textarea bind:this={box} bind:value={text} onkeydown={onKey} onpaste={onPaste} aria-label="Quick note text"
         placeholder={mode === 'add' ? 'Added to the end of this note' : 'A thought, a link, a screenshot'}></textarea>
       {#if pics.length}
         <div class="thumbs">
@@ -179,9 +206,12 @@ ${md}` : '');
         </div>
       {/if}
     {/if}
+    {/if}
     {#if error}<p class="capture-error" role="alert">{error}</p>{/if}
     <div class="capture-foot">
-      {#if mode === 'add' && !target}
+      {#if choosing}
+        <span><kbd>Left Right</kbd>Move</span><span><kbd>Enter</kbd>Choose</span><span>Or just start typing</span><span><kbd>Esc</kbd>Close</span>
+      {:else if mode === 'add' && !target}
         <span><kbd>Up Down</kbd>Move</span><span><kbd>Enter</kbd>Choose</span><span><kbd>Esc</kbd>Close</span>
       {:else}
         <span><kbd>Enter</kbd>Save</span><span><kbd>Shift Enter</kbd>New line</span>{#if mode === 'new'}<span><kbd>Shift Tab</kbd>Title</span>{/if}<span><kbd>Esc</kbd>Close</span>
