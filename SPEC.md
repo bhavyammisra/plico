@@ -177,7 +177,8 @@ highlighted. Index kept in memory, built at start-up from the files.
   Clicking another note glides the lens there with a slight springy settle (about 0.55 s).
   Only this one small element uses a backdrop filter.
 - Right-click a note in the list for Pin, Move to folder (including a new folder), Locked folder
-  and Delete.
+  and Delete. Ctrl+click adds notes to a selection and Shift+click picks a run of them; the
+  right-click menu then acts on all of them, and a bar at the foot of the list shows the count.
 - Settings, "Hide note text in the list" (off by default): the list shows only titles and times.
 - Settings, "Selected note style": Liquid glass, Contour lines, or None (default: just the
   plain soft highlight, no effect).

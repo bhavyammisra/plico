@@ -32,16 +32,44 @@
   let confirmFolder = $state(null); // folder waiting for a second click to remove
   let confirmForever = $state(false);
   let moveMenu = $state(false);
-  let ctx = $state(null); // { n, x, y } while a note's right-click menu is open
+  let ctx = $state(null); // { ns, x, y } while the right-click menu is open; ns = the notes it acts on
+  let picked = $state([]); // ids of notes chosen with Ctrl or Shift click
+  let anchor = null; // where a Shift click range starts
 
   function openCtx(e, n) {
     if (inTrash || inLocked) return;
     e.preventDefault();
+    const ns = picked.includes(n.id) && picked.length > 1 ? store.notes.filter((m) => picked.includes(m.id)) : [n];
     // keep the menu inside the window
-    ctx = { n, x: Math.min(e.clientX, innerWidth - 230), y: Math.max(8, Math.min(e.clientY, innerHeight - 160 - 34 * store.folders.length)) };
+    ctx = { ns, x: Math.min(e.clientX, innerWidth - 230), y: Math.max(8, Math.min(e.clientY, innerHeight - 190 - 34 * store.folders.length)) };
   }
 
-  function ctxDo(fn) { const n = ctx.n; ctx = null; fn(n); }
+  async function ctxDo(fn) {
+    const ns = ctx.ns;
+    ctx = null;
+    picked = [];
+    for (const m of ns) await fn(m); // one at a time: each move renames files on disk
+  }
+
+  /** Ctrl+click adds or removes a note, Shift+click picks a run of notes; a plain click opens one. */
+  function clickRow(e, n) {
+    if (!inTrash && !inLocked && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+      const flat = groups.flatMap((g) => g.notes);
+      if (!picked.length && note) picked = [note.id];
+      const from = flat.findIndex((m) => m.id === (anchor ?? note?.id));
+      if (e.shiftKey && from >= 0) {
+        const to = flat.indexOf(n);
+        picked = flat.slice(Math.min(from, to), Math.max(from, to) + 1).map((m) => m.id);
+      } else {
+        picked = picked.includes(n.id) ? picked.filter((id) => id !== n.id) : [...picked, n.id];
+        anchor = n.id;
+      }
+      return;
+    }
+    picked = [];
+    anchor = n.id;
+    pick(n);
+  }
 
   const inTrash = $derived(store.view === 'trash');
   const inLocked = $derived(store.view === 'locked');
@@ -141,6 +169,7 @@
     page = 'notes';
     moveMenu = false;
     confirmForever = false;
+    picked = [];
     store.view = view;
     confirmLockedDelete = false;
     if (view === 'trash') await loadTrash();
@@ -170,7 +199,7 @@
     if (n.from) await renameFolder(n.from, value);
     else {
       const made = await newFolder(value);
-      if (made && n.move) await moveTo(n.move, made); // "New folder" from a note's right-click menu
+      for (const m of n.move ?? []) await moveTo(m, made); // "New folder" from the right-click menu
       if (made) show(`folder:${made}`);
     }
   }
@@ -182,7 +211,7 @@
     else if (mod && e.key.toLowerCase() === 'p') { e.preventDefault(); if (page === 'notes' && note && !inTrash && !inLocked) printNote(note); }
     else if (mod && e.key === '.') { e.preventDefault(); focusMode = !focusMode; }
     else if (mod && e.key === '\\') { e.preventDefault(); sidebar = !sidebar; }
-    else if (e.key === 'Escape') { if (ctx) ctx = null; else if (moveMenu) moveMenu = false; else if (focusMode) focusMode = false; }
+    else if (e.key === 'Escape') { if (ctx) ctx = null; else if (picked.length) picked = []; else if (moveMenu) moveMenu = false; else if (focusMode) focusMode = false; }
   }
 
   function listKey(e) {
@@ -326,7 +355,7 @@
           {#each groups as g (g.name)}
             <div class="group">{g.name}</div>
             {#each g.notes as n (keyOf(n))}
-              <button class="row" role="option" aria-selected={keyOf(n) === currentKey} aria-current={keyOf(n) === currentKey} onclick={() => pick(n)} oncontextmenu={(e) => openCtx(e, n)}>
+              <button class="row" role="option" aria-selected={keyOf(n) === currentKey} aria-current={keyOf(n) === currentKey} class:picked={picked.length > 1 && picked.includes(n.id)} onclick={(e) => clickRow(e, n)} oncontextmenu={(e) => openCtx(e, n)}>
                 {#if keyOf(n) === currentKey}{#key keyOf(n)}<div class="topo" aria-hidden="true" style:--pos={patch(n)}></div>{/key}{/if}
                 <div class="row-title">{#if n.pinned}<Pin size={13} strokeWidth={1.5} />{/if}{n.title || (n.preview ? 'Untitled' : 'New note')}</div>
                 <div class="row-meta"><time>{timeOf(n.modified)}</time><span>{#if onlyInPicture(n, searchWords)}<em class="in-pic">Found in a picture</em> {/if}{#if !settings.hidePreviews}{n.preview}{/if}</span></div>
@@ -343,6 +372,9 @@
             </p>
           {/each}
         </div>
+        {#if picked.length > 1}
+          <div class="picked-bar" role="status"><span>{picked.length} notes selected. Right-click one to move them.</span><button class="ghost-btn" onclick={() => (picked = [])}>Clear</button></div>
+        {/if}
       </section>
 
       <section class="editor" aria-label="Note">
@@ -457,18 +489,22 @@
 {/if}
 
 {#if ctx}
-  {@const n = ctx.n}
+  {@const ns = ctx.ns}
+  {@const all = (test) => ns.every(test)}
   <div class="menu ctx" role="menu" aria-label="Note actions" style:left="{ctx.x}px" style:top="{ctx.y}px">
-    <button role="menuitem" onclick={() => ctxDo(togglePin)}>{#if n.pinned}<PinOff size={14} strokeWidth={1.5} />Unpin{:else}<Pin size={14} strokeWidth={1.5} />Pin to the top{/if}</button>
+    {#if ns.length > 1}<div class="menu-label">{ns.length} notes</div>{/if}
+    <button role="menuitem" onclick={() => { const on = all((m) => m.pinned); ctxDo((m) => m.pinned === on && togglePin(m)); }}>
+      {#if all((m) => m.pinned)}<PinOff size={14} strokeWidth={1.5} />Unpin{:else}<Pin size={14} strokeWidth={1.5} />Pin to the top{/if}
+    </button>
     <div class="menu-label">Move to folder</div>
-    <button role="menuitem" onclick={() => ctxDo((m) => moveTo(m, null))}>{#if !n.folder}<Check size={14} strokeWidth={1.5} />{:else}<span class="ck"></span>{/if}No folder</button>
+    <button role="menuitem" onclick={() => ctxDo((m) => moveTo(m, null))}>{#if all((m) => !m.folder)}<Check size={14} strokeWidth={1.5} />{:else}<span class="ck"></span>{/if}No folder</button>
     {#each store.folders as f (f)}
-      <button role="menuitem" onclick={() => ctxDo((m) => moveTo(m, f))}>{#if n.folder === f}<Check size={14} strokeWidth={1.5} />{:else}<span class="ck"></span>{/if}{f}</button>
+      <button role="menuitem" onclick={() => ctxDo((m) => moveTo(m, f))}>{#if all((m) => m.folder === f)}<Check size={14} strokeWidth={1.5} />{:else}<span class="ck"></span>{/if}{f}</button>
     {/each}
-    <button role="menuitem" class="muted" onclick={() => ctxDo((m) => { sidebar = true; naming = { from: null, value: '', move: m }; })}><Plus size={14} strokeWidth={1.5} />New folder</button>
+    <button role="menuitem" class="muted" onclick={() => { const move = ns; ctx = null; picked = []; sidebar = true; naming = { from: null, value: '', move }; }}><Plus size={14} strokeWidth={1.5} />New folder</button>
     {#if vault.exists}<button role="menuitem" class="muted" onclick={() => ctxDo(lockThis)}><Lock size={14} strokeWidth={1.5} />{vault.unlocked ? 'Locked folder' : 'Locked folder (unlock first)'}</button>{/if}
     <div class="menu-sep"></div>
-    <button role="menuitem" class="danger" onclick={() => ctxDo(remove)}><Trash2 size={14} strokeWidth={1.5} />Delete</button>
+    <button role="menuitem" class="danger" onclick={() => ctxDo(remove)}><Trash2 size={14} strokeWidth={1.5} />{ns.length > 1 ? `Delete ${ns.length} notes` : 'Delete'}</button>
   </div>
 {/if}
 
