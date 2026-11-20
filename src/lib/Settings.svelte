@@ -3,6 +3,7 @@
   import { isEnabled, enable, disable } from '@tauri-apps/plugin-autostart';
   import { settings, set, capture, keysOf } from './settings.svelte.js';
   import { invoke } from '@tauri-apps/api/core';
+  import { updates, look, install } from './updates.svelte.js';
   import { vault, setPassword, setQuestion, status as vaultStatus, explain } from './vault.svelte.js';
 
   const inTauri = '__TAURI_INTERNALS__' in window;
@@ -135,4 +136,23 @@
     {/if}
     <div class="set-row"><div><div class="t">Locks again</div><div class="d">After 5 minutes without use, and whenever you close Plico.</div></div></div>
   {/if}
+  <h2>Updates</h2>
+  <div class="set-row">
+    <div>
+      <div class="t">Plico {updates.current || ''}</div>
+      <div class="d" class:err={updates.state === 'error'}>
+        {#if updates.state === 'checking'}Checking for a new version...
+        {:else if updates.state === 'downloading'}Downloading the update{updates.progress ? `, ${Math.round(updates.progress * 100)}%` : ''}...
+        {:else if updates.state === 'error'}{updates.error}
+        {:else if updates.found}Version {updates.found.version} is ready to install.
+        {:else if updates.state === 'none'}You have the latest version.
+        {:else}Plico looks for new versions by itself and asks before installing.{/if}
+      </div>
+    </div>
+    {#if updates.found && updates.state !== 'downloading'}
+      <button class="ghost-btn" onclick={install}>Update now</button>
+    {:else}
+      <button class="ghost-btn" disabled={!inTauri || updates.state === 'checking' || updates.state === 'downloading'} onclick={() => look()}>Check now</button>
+    {/if}
+  </div>
 </div>

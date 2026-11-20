@@ -163,6 +163,19 @@ cargo test
 handy for checking layout. Folders, the locked folder and pictures need the real app. In dev
 builds, setting `PLICO_NOTES_DIR` points Plico at a scratch folder so tests never touch real notes.
 
+## Releasing an update
+
+```
+npm run release -- 0.2.0 "What changed"
+```
+
+This sets the version, builds a signed installer, writes `latest.json` and publishes the GitHub
+release `v0.2.0`. Installed copies find it within a few hours (or straight away from Settings,
+Check now) and ask before installing. Add `--no-publish` to build without publishing.
+
+Updates are signed with the private key in `%USERPROFILE%\.tauri\plico.key`. Keep a private
+backup of it: without it, existing installs can't be sent updates. It must never be committed.
+
 ## How it's built
 
 | Part | What it uses |

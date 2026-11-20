@@ -14,6 +14,7 @@
   import Settings from './lib/Settings.svelte';
   import { initMedia } from './lib/media.js';
   import { lensMap } from './lib/glass.js';
+  import { updates, install } from './lib/updates.svelte.js';
   import { settings, set, capture } from './lib/settings.svelte.js';
   import { linksIn } from './lib/extensions.js';
   import {
@@ -485,6 +486,21 @@
       {#if win}<button class="ghost-btn" onclick={() => { set('introDone', true); invoke('open_capture'); }}>Try it now</button>{/if}
       <button class="ghost-btn" onclick={() => set('introDone', true)}>Got it</button>
     </div>
+  </aside>
+{/if}
+
+{#if settings.introDone && updates.found && !updates.later}
+  <aside class="intro" aria-label="Update">
+    <div class="t">Plico {updates.found.version} is ready</div>
+    {#if updates.state === 'downloading'}
+      <p>Downloading{updates.progress ? `, ${Math.round(updates.progress * 100)}%` : ''}. Plico restarts by itself when it's done, and your notes are saved first.</p>
+    {:else}
+      <p>{updates.error ?? (updates.found.notes.trim().split(/\r?\n/)[0] || 'A new version with fixes and improvements.')}</p>
+      <div class="intro-actions">
+        <button class="ghost-btn" onclick={() => (updates.later = true)}>Later</button>
+        <button class="ghost-btn" onclick={install}>Update now</button>
+      </div>
+    {/if}
   </aside>
 {/if}
 

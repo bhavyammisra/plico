@@ -258,8 +258,12 @@ Plico is going public (see PRODUCT.md, Business Model and Release). Next, in rou
    Try it now); the shortcut can be changed in Settings (press the new keys; it must include Ctrl
    or Alt, and if Windows or another app already uses it the old one stays and Settings says so;
    the tray menu shows the current keys); dates and times follow the Windows region format and
-   12 or 24 hour clock. Still to do: auto-update (needs a signing key and a place to host
-   updates, decided with the website) and the privacy policy and terms on the website.
+   12 or 24 hour clock. Auto-update: new versions are GitHub releases (installer plus a signed
+   `latest.json`); Plico checks 8 s after start and every 6 hours, shows a card with Update now
+   and Later, and installs only on a click (notes are saved first, then it restarts). Settings,
+   Updates shows the version and a Check now button. Updates are signed with the key in
+   `~/.tauri/plico.key`, which never goes in the repo. Still to do: the privacy policy and terms
+   on the website.
 
 Optional or later: a Today note (one dated note per day that capture can add to), reminders,
 templates, outline view, word count.
