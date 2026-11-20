@@ -660,33 +660,47 @@ fn request_quit(app: &tauri::AppHandle) {
     });
 }
 
-const DEFAULT_KEYS: &str = "Ctrl+Shift+Space";
+/// Plico's two global shortcuts: "capture" opens quick note, "open" brings the main window forward.
+const SHORTCUTS: [(&str, &str, &str); 2] = [("capture", "Ctrl+Shift+Space", "Quick note"), ("open", "Ctrl+Alt+P", "Open Plico")];
 
-fn keys_file(app: &tauri::AppHandle) -> Option<PathBuf> {
-    app.path().app_config_dir().ok().map(|d| d.join("capture-shortcut.txt"))
+fn shortcut(which: &str) -> Result<(&'static str, &'static str), String> {
+    SHORTCUTS.iter().find(|s| s.0 == which).map(|s| (s.1, s.2)).ok_or_else(|| format!("No shortcut called {which}"))
 }
 
-/// The quick capture shortcut, as written in Settings (`Ctrl+Shift+Space`).
-fn saved_keys(app: &tauri::AppHandle) -> String {
-    keys_file(app)
+fn keys_file(app: &tauri::AppHandle, which: &str) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join(format!("{which}-shortcut.txt")))
+}
+
+/// A shortcut as written in Settings (`Ctrl+Shift+Space`).
+fn saved_keys(app: &tauri::AppHandle, which: &str) -> String {
+    keys_file(app, which)
         .and_then(|f| fs::read_to_string(f).ok())
         .map(|s| s.trim().to_string())
         .filter(|s| s.parse::<Shortcut>().is_ok())
-        .unwrap_or_else(|| DEFAULT_KEYS.to_string())
+        .unwrap_or_else(|| shortcut(which).map(|s| s.0).unwrap_or_default().to_string())
 }
 
-struct CaptureMenu(MenuItem<tauri::Wry>);
+/// The tray menu items, so their labels can show the current keys.
+struct TrayItems(Vec<(&'static str, MenuItem<tauri::Wry>)>);
 
-#[tauri::command]
-fn capture_keys(app: tauri::AppHandle) -> String {
-    saved_keys(&app)
+fn tray_label(app: &tauri::AppHandle, which: &str) -> String {
+    format!("{}    {}", shortcut(which).map(|s| s.1).unwrap_or_default(), saved_keys(app, which))
 }
 
-/// Swaps the quick capture shortcut; the old one keeps working if the new one is taken.
 #[tauri::command]
-fn set_capture_keys(app: tauri::AppHandle, keys: String) -> Result<String, String> {
+fn shortcut_keys(app: tauri::AppHandle, which: String) -> String {
+    saved_keys(&app, &which)
+}
+
+/// Swaps one of the shortcuts; the old keys keep working if the new ones are taken.
+#[tauri::command]
+fn set_shortcut_keys(app: tauri::AppHandle, which: String, keys: String) -> Result<String, String> {
+    shortcut(&which)?;
     let new: Shortcut = keys.parse().map_err(|_| format!("{keys} can't be used as a shortcut."))?;
-    let old = saved_keys(&app).parse::<Shortcut>().ok();
+    if SHORTCUTS.iter().any(|s| s.0 != which && saved_keys(&app, s.0).parse::<Shortcut>().ok() == Some(new)) {
+        return Err(format!("{keys} is already Plico's other shortcut. Try a different one."));
+    }
+    let old = saved_keys(&app, &which).parse::<Shortcut>().ok();
     if old != Some(new) {
         let gs = app.global_shortcut();
         gs.register(new).map_err(|_| format!("{keys} is already used by Windows or another app. Try a different one."))?;
@@ -694,19 +708,21 @@ fn set_capture_keys(app: tauri::AppHandle, keys: String) -> Result<String, Strin
             let _ = gs.unregister(o);
         }
     }
-    let f = keys_file(&app).ok_or("Can't find Plico's settings folder")?;
+    let f = keys_file(&app, &which).ok_or("Can't find Plico's settings folder")?;
     fs::create_dir_all(f.parent().unwrap_or(&f)).map_err(|e| e.to_string())?;
     fs::write(&f, &keys).map_err(|e| e.to_string())?;
-    if let Some(m) = app.try_state::<CaptureMenu>() {
-        let _ = m.0.set_text(format!("Quick note    {keys}"));
+    if let Some(items) = app.try_state::<TrayItems>() {
+        if let Some((_, m)) = items.0.iter().find(|(w, _)| *w == which) {
+            let _ = m.set_text(tray_label(&app, &which));
+        }
     }
     Ok(keys)
 }
 
 fn tray(app: &tauri::App) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Open Plico", true, None::<&str>)?;
-    let capture = MenuItem::with_id(app, "capture", format!("Quick note    {}", saved_keys(app.handle())), true, None::<&str>)?;
-    app.manage(CaptureMenu(capture.clone()));
+    let open = MenuItem::with_id(app, "open", tray_label(app.handle(), "open"), true, None::<&str>)?;
+    let capture = MenuItem::with_id(app, "capture", tray_label(app.handle(), "capture"), true, None::<&str>)?;
+    app.manage(TrayItems(vec![("open", open.clone()), ("capture", capture.clone())]));
     let quit = MenuItem::with_id(app, "quit", "Quit Plico", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &capture, &PredefinedMenuItem::separator(app)?, &quit])?;
     TrayIconBuilder::with_id("tray")
@@ -743,18 +759,24 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                // the capture shortcut is the only one Plico registers
-                .with_handler(|app, _, ev| {
-                    if ev.state() == ShortcutState::Pressed {
+                .with_handler(|app, sc, ev| {
+                    if ev.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    if saved_keys(app, "open").parse::<Shortcut>().ok().as_ref() == Some(sc) {
+                        show_main(app);
+                    } else {
                         show_capture(app);
                     }
                 })
                 .build(),
         )
         .setup(|app| {
-            let keys = saved_keys(app.handle());
-            if let Err(e) = keys.parse::<Shortcut>().map_err(|e| e.to_string()).and_then(|k| app.global_shortcut().register(k).map_err(|e| e.to_string())) {
-                eprintln!("{keys} is taken by another app: {e}");
+            for (which, _, _) in SHORTCUTS {
+                let keys = saved_keys(app.handle(), which);
+                if let Err(e) = keys.parse::<Shortcut>().map_err(|e| e.to_string()).and_then(|k| app.global_shortcut().register(k).map_err(|e| e.to_string())) {
+                    eprintln!("{keys} is taken by another app: {e}");
+                }
             }
             tray(app)?;
             if let Ok(r) = root(app.handle()) {
@@ -792,7 +814,7 @@ pub fn run() {
             list_notes, read_note, picture_texts, save_note, trash_note, notes_root, save_image, fetch_title, started_hidden, quit,
             list_trash, restore_note, delete_forever, list_folders, create_folder, rename_folder, delete_folder, move_note,
             vault_status, vault_setup, vault_unlock, vault_lock, vault_set_password, vault_set_question,
-            locked_list, locked_save, locked_delete, lock_note, unlock_note, list_versions, keep_version, capture_keys, set_capture_keys, open_capture, date_format
+            locked_list, locked_save, locked_delete, lock_note, unlock_note, list_versions, keep_version, shortcut_keys, set_shortcut_keys, open_capture, date_format
         ])
         .run(tauri::generate_context!())
         .expect("error while running Plico");

@@ -69,6 +69,7 @@ installer fetches it if it's missing.
 | Keys | Action |
 |---|---|
 | `Ctrl+Shift+Space` | Quick capture, from any app |
+| `Ctrl+Alt+P` | Open Plico, from any app |
 | `Ctrl+N` | New note |
 | `Ctrl+K` | Search |
 | `Ctrl+1` / `2` / `3` | Heading 1 / 2 / 3 |

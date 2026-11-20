@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { isEnabled, enable, disable } from '@tauri-apps/plugin-autostart';
-  import { settings, set, capture, keysOf } from './settings.svelte.js';
+  import { settings, set, shortcuts, keysOf } from './settings.svelte.js';
   import { invoke } from '@tauri-apps/api/core';
   import { updates, look, install } from './updates.svelte.js';
   import { vault, setPassword, setQuestion, status as vaultStatus, explain } from './vault.svelte.js';
@@ -42,20 +42,21 @@
     }
   }
 
-  let recording = $state(false), keysError = $state(null);
+  let recording = $state(null), keysError = $state(null); // which shortcut is waiting for new keys; { which, text }
 
   async function recordKeys(e) {
     if (!recording) return;
     e.preventDefault();
     e.stopPropagation();
-    if (e.key === 'Escape') return (recording = false);
+    if (e.key === 'Escape') return (recording = null);
     const keys = keysOf(e);
     if (!keys) return;
     // Windows keeps the Win key for itself, and a shortcut without Ctrl or Alt would fire while typing
-    if (!e.ctrlKey && !e.altKey) return (keysError = 'Include Ctrl or Alt, for example Ctrl+Shift+N.');
-    recording = false;
-    try { capture.keys = await invoke('set_capture_keys', { keys }); keysError = null; }
-    catch (err) { keysError = String(err); }
+    const which = recording;
+    if (!e.ctrlKey && !e.altKey) return (keysError = { which, text: 'Include Ctrl or Alt, for example Ctrl+Shift+N.' });
+    recording = null;
+    try { shortcuts[which] = await invoke('set_shortcut_keys', { which, keys }); keysError = null; }
+    catch (err) { keysError = { which, text: String(err) }; }
   }
 
   const themes = [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']];
@@ -95,14 +96,16 @@
   <div class="set-row">
     <div><div class="t">Notes folder</div><div class="path">Documents\Plico</div></div>
   </div>
-  <div class="set-row">
-    <div><div class="t">Quick capture shortcut</div><div class="d" class:err={keysError}>{keysError ?? 'Opens a small note box over any app.'}</div></div>
-    <span class="keys">
-      {#if recording}<span class="d">Press the new keys</span>
-      {:else}<span class="hint">{#each capture.keys.split('+') as k}<kbd>{k}</kbd>{/each}</span>{/if}
-      <button class="ghost-btn" disabled={!inTauri} onclick={() => { keysError = null; recording = !recording; }}>{recording ? 'Cancel' : 'Change'}</button>
-    </span>
-  </div>
+  {#each [['capture', 'Quick capture shortcut', 'Opens a small note box over any app.'], ['open', 'Open Plico shortcut', 'Brings Plico to the front from any app.']] as [which, title, about] (which)}
+    <div class="set-row">
+      <div><div class="t">{title}</div><div class="d" class:err={keysError?.which === which}>{keysError?.which === which ? keysError.text : about}</div></div>
+      <span class="keys">
+        {#if recording === which}<span class="d">Press the new keys</span>
+        {:else}<span class="hint">{#each shortcuts[which].split('+') as k}<kbd>{k}</kbd>{/each}</span>{/if}
+        <button class="ghost-btn" disabled={!inTauri} onclick={() => { keysError = null; recording = recording === which ? null : which; }}>{recording === which ? 'Cancel' : 'Change'}</button>
+      </span>
+    </div>
+  {/each}
   <div class="set-row">
     <div>
       <div class="t">Start with Windows</div>

@@ -36,10 +36,14 @@ addEventListener('storage', (e) => {
 });
 paint();
 
-/** The quick capture shortcut lives with the Windows side (it has to work before any window opens). */
-export const capture = $state({ keys: 'Ctrl+Shift+Space' });
+/** Plico's global shortcuts live with the Windows side (they have to work before any window opens). */
+export const shortcuts = $state({ capture: 'Ctrl+Shift+Space', open: 'Ctrl+Alt+P' });
 if ('__TAURI_INTERNALS__' in window) {
-  import('@tauri-apps/api/core').then(({ invoke }) => invoke('capture_keys')).then((k) => { if (typeof k === 'string') capture.keys = k; }).catch(() => {});
+  import('@tauri-apps/api/core').then(({ invoke }) => {
+    for (const which of Object.keys(shortcuts)) {
+      invoke('shortcut_keys', { which }).then((k) => { if (typeof k === 'string') shortcuts[which] = k; }).catch(() => {});
+    }
+  });
 }
 
 /** Turns a key press into a shortcut like `Ctrl+Shift+N`, or null while only modifiers are held. */

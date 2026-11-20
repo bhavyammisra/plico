@@ -15,7 +15,7 @@
   import { initMedia } from './lib/media.js';
   import { lensMap } from './lib/glass.js';
   import { updates, install } from './lib/updates.svelte.js';
-  import { settings, set, capture } from './lib/settings.svelte.js';
+  import { settings, set, shortcuts } from './lib/settings.svelte.js';
   import { linksIn } from './lib/extensions.js';
   import {
     store, load, refresh, append, diskChanged, haystack, onlyInPicture, allTags, flushAll, visible, select, create, edit, remove, flush, groupOf, timeOf, stampOf,
@@ -481,7 +481,7 @@
 {#if !settings.introDone && store.loaded}
   <aside class="intro" aria-label="Quick note">
     <div class="t">Quick note from anywhere</div>
-    <p>Press {#each capture.keys.split('+') as k}<kbd>{k}</kbd>{/each}in any app to write something down. Closing Plico keeps it in the tray, so this stays instant. You can change the keys in Settings.</p>
+    <p>Press {#each shortcuts.capture.split('+') as k}<kbd>{k}</kbd>{/each}in any app to write something down. Closing Plico keeps it in the tray, so this stays instant. You can change the keys in Settings.</p>
     <div class="intro-actions">
       {#if win}<button class="ghost-btn" onclick={() => { set('introDone', true); invoke('open_capture'); }}>Try it now</button>{/if}
       <button class="ghost-btn" onclick={() => set('introDone', true)}>Got it</button>
