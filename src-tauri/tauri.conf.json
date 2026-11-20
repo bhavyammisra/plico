@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Envelo",
+  "productName": "Plico",
   "version": "0.1.0",
-  "identifier": "com.bhavyam.envelo",
+  "identifier": "com.bhavyam.plico",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Envelo",
+        "title": "Plico",
         "width": 1240,
         "height": 780,
         "minWidth": 820,
@@ -26,7 +26,8 @@
       {
         "label": "capture",
         "url": "index.html?view=capture",
-        "title": "Envelo quick note",
+        "title": "Plico quick note",
+        "dragDropEnabled": false,
         "width": 600,
         "height": 290,
         "decorations": false,
@@ -45,7 +46,7 @@
       "assetProtocol": {
         "enable": true,
         "scope": [
-          "$DOCUMENT/Envelo/**"
+          "$DOCUMENT/Plico/**"
         ]
       }
     }

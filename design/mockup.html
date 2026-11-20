@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Envelo mockup</title>
+<title>Plico mockup</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap" rel="stylesheet">
@@ -61,7 +61,7 @@ main > section { width: min(1240px, 100%); }
 .window { width: min(1240px, 100%); height: 760px; border-radius: 10px; overflow: hidden; box-shadow: var(--shadow);
   border: 1px solid var(--line); display: grid; grid-template-rows: 36px 1fr; background: var(--paper); }
 .titlebar { display: flex; align-items: center; background: var(--ground); border-bottom: 1px solid var(--line); padding-left: 14px; }
-.titlebar .name { font: 500 13px/1 var(--serif); font-size: 15px; letter-spacing: 0.01em; }
+.titlebar .name { font: 500 13px/1 var(--serif); font-size: 15px; letter-spacing: 0.01em; padding-top: 3px; /* centres the letters, not the line box, on the icon */ }
 .caption { margin-left: auto; display: flex; height: 100%; }
 .caption span { width: 46px; display: grid; place-items: center; color: var(--ink-2); }
 .caption span:last-child:hover { background: #C42B1C; color: #fff; }
@@ -291,7 +291,7 @@ th { font-weight: 500; color: var(--ink-2); background: var(--list); }
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <symbol id="envelo-icon" viewBox="0 0 64 64">
+  <symbol id="plico-icon" viewBox="0 0 64 64">
     <rect x="3" y="3" width="58" height="58" rx="15" fill="#F3ECDF"/>
     <rect x="3.5" y="3.5" width="57" height="57" rx="14.5" fill="none" stroke="#000" stroke-opacity=".14"/>
     <path d="M44 3h2.5A14.5 14.5 0 0 1 61 17.5V20H48a4 4 0 0 1-4-4z" fill="#DCCFB6"/>
@@ -317,7 +317,7 @@ th { font-weight: 500; color: var(--ink-2); background: var(--list); }
     <p class="frame-title">Main window, text selected</p>
     <div class="window">
       <div class="titlebar">
-        <svg class="app-ico" aria-hidden="true"><use href="#envelo-icon"/></svg><span class="name">Envelo</span>
+        <svg class="app-ico" aria-hidden="true"><use href="#plico-icon"/></svg><span class="name">Plico</span>
         <div class="caption" aria-hidden="true"><span><i data-lucide="minus"></i></span><span><i data-lucide="square"></i></span><span><i data-lucide="x"></i></span></div>
       </div>
       <div class="app">
@@ -351,7 +351,7 @@ th { font-weight: 500; color: var(--ink-2); background: var(--list); }
             <div class="group">Yesterday</div>
             <button class="row"><div class="row-title">Marks</div><div class="row-meta"><time>21:51</time><span>CAO 25/30, MST next week</span></div></button>
             <div class="group">Previous 7 days</div>
-            <button class="row"><div class="row-title">Envelo icon ideas</div><div class="row-meta"><time>Mon</time><span>A folded corner, maybe a pressed leaf</span></div></button>
+            <button class="row"><div class="row-title">Plico icon ideas</div><div class="row-meta"><time>Mon</time><span>A folded corner, maybe a pressed leaf</span></div></button>
             <button class="row"><div class="row-title">Trip packing list</div><div class="row-meta"><time>Sat</time><span>Charger, notebook, the grey jacket</span></div></button>
             <div class="group">September</div>
             <button class="row"><div class="row-title">Shortcut ideas</div><div class="row-meta"><time>28/09</time><span>Ctrl+Shift+Space for quick capture</span></div></button>
@@ -406,12 +406,12 @@ th { font-weight: 500; color: var(--ink-2); background: var(--list); }
     <div class="desk">
       <div class="ghost"></div>
       <div class="capture" role="dialog" aria-label="Quick note">
-        <div class="capture-head"><span class="name">Envelo</span><span>New note</span></div>
+        <div class="capture-head"><span class="name">Plico</span><span>New note</span></div>
         <textarea aria-label="Quick note text">https://lukebaffait.fr
 the scroll is so calm, look at how the headings arrive</textarea>
         <div class="capture-foot"><span><kbd>Enter</kbd>Save</span><span><kbd>Shift Enter</kbd>New line</span><span><kbd>Esc</kbd>Close</span></div>
       </div>
-      <div class="saved" role="status"><i data-lucide="check"></i>Saved to Envelo</div>
+      <div class="saved" role="status"><i data-lucide="check"></i>Saved to Plico</div>
     </div>
   </section>
 
@@ -419,14 +419,14 @@ the scroll is so calm, look at how the headings arrive</textarea>
     <p class="frame-title">App icon, a sealed envelope with a folded corner</p>
     <div class="icons">
       <div class="on-light">
-        <figure><svg width="96" height="96"><use href="#envelo-icon"/></svg><figcaption>Start menu</figcaption></figure>
-        <figure><svg width="48" height="48"><use href="#envelo-icon"/></svg><figcaption>Taskbar</figcaption></figure>
-        <figure><svg width="24" height="24"><use href="#envelo-icon"/></svg><figcaption>Tray</figcaption></figure>
+        <figure><svg width="96" height="96"><use href="#plico-icon"/></svg><figcaption>Start menu</figcaption></figure>
+        <figure><svg width="48" height="48"><use href="#plico-icon"/></svg><figcaption>Taskbar</figcaption></figure>
+        <figure><svg width="24" height="24"><use href="#plico-icon"/></svg><figcaption>Tray</figcaption></figure>
       </div>
       <div class="on-dark">
-        <figure><svg width="96" height="96"><use href="#envelo-icon"/></svg><figcaption>Start menu</figcaption></figure>
-        <figure><svg width="48" height="48"><use href="#envelo-icon"/></svg><figcaption>Taskbar</figcaption></figure>
-        <figure><svg width="24" height="24"><use href="#envelo-icon"/></svg><figcaption>Tray</figcaption></figure>
+        <figure><svg width="96" height="96"><use href="#plico-icon"/></svg><figcaption>Start menu</figcaption></figure>
+        <figure><svg width="48" height="48"><use href="#plico-icon"/></svg><figcaption>Taskbar</figcaption></figure>
+        <figure><svg width="24" height="24"><use href="#plico-icon"/></svg><figcaption>Tray</figcaption></figure>
       </div>
     </div>
   </section>
@@ -435,7 +435,7 @@ the scroll is so calm, look at how the headings arrive</textarea>
     <p class="frame-title">Locked folder, first time</p>
     <div class="window">
       <div class="titlebar">
-        <svg class="app-ico" aria-hidden="true"><use href="#envelo-icon"/></svg><span class="name">Envelo</span>
+        <svg class="app-ico" aria-hidden="true"><use href="#plico-icon"/></svg><span class="name">Plico</span>
         <div class="caption" aria-hidden="true"><span><i data-lucide="minus"></i></span><span><i data-lucide="square"></i></span><span><i data-lucide="x"></i></span></div>
       </div>
       <div class="app" style="grid-template-columns: 216px minmax(0, 1fr);">
@@ -477,7 +477,7 @@ the scroll is so calm, look at how the headings arrive</textarea>
     <p class="frame-title">Settings</p>
     <div class="window">
       <div class="titlebar">
-        <svg class="app-ico" aria-hidden="true"><use href="#envelo-icon"/></svg><span class="name">Envelo</span>
+        <svg class="app-ico" aria-hidden="true"><use href="#plico-icon"/></svg><span class="name">Plico</span>
         <div class="caption" aria-hidden="true"><span><i data-lucide="minus"></i></span><span><i data-lucide="square"></i></span><span><i data-lucide="x"></i></span></div>
       </div>
       <div class="app" style="grid-template-columns: 216px minmax(0, 1fr);">
@@ -515,13 +515,13 @@ the scroll is so calm, look at how the headings arrive</textarea>
               <div class="bgs"><button class="bg" aria-pressed="true" aria-label="Plain"></button><button class="bg paper" aria-label="Warm paper"></button><button class="bg lined" aria-label="Lined"></button><button class="bg grid" aria-label="Grid"></button><button class="bg dots" aria-label="Dotted"></button></div></div>
 
             <h2>Notes</h2>
-            <div class="set-row"><div><div class="t">Notes folder</div><div class="path">C:\Users\bhavy\Documents\Envelo</div></div><button class="ghost-btn">Change</button></div>
+            <div class="set-row"><div><div class="t">Notes folder</div><div class="path">C:\Users\bhavy\Documents\Plico</div></div><button class="ghost-btn">Change</button></div>
             <div class="set-row"><div><div class="t">Quick capture shortcut</div><div class="d">Works from any app.</div></div><span class="hint"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Space</kbd> <button class="ghost-btn">Change</button></span></div>
             <div class="set-row"><div><div class="t">Start with Windows</div><div class="d">Keeps quick capture ready in the tray.</div></div><span class="toggle" role="switch" aria-checked="true" aria-label="Start with Windows"></span></div>
 
             <h2>Locked folder</h2>
             <div class="set-row"><div><div class="t">Password and security question</div><div class="d">Unlock the folder first to change these.</div></div><button class="ghost-btn">Change</button></div>
-            <div class="set-row"><div><div class="t">Lock after</div><div class="d">Also locks when you close Envelo.</div></div>
+            <div class="set-row"><div><div class="t">Lock after</div><div class="d">Also locks when you close Plico.</div></div>
               <select class="ghost-btn" aria-label="Lock after"><option>5 minutes idle</option><option>1 minute idle</option><option>15 minutes idle</option></select></div>
           </div>
         </section>

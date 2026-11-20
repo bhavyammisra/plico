@@ -1,7 +1,8 @@
 <script>
   import { onMount } from 'svelte';
   import { isEnabled, enable, disable } from '@tauri-apps/plugin-autostart';
-  import { settings, set } from './settings.svelte.js';
+  import { settings, set, capture, keysOf } from './settings.svelte.js';
+  import { invoke } from '@tauri-apps/api/core';
   import { vault, setPassword, setQuestion, status as vaultStatus, explain } from './vault.svelte.js';
 
   const inTauri = '__TAURI_INTERNALS__' in window;
@@ -40,10 +41,28 @@
     }
   }
 
+  let recording = $state(false), keysError = $state(null);
+
+  async function recordKeys(e) {
+    if (!recording) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape') return (recording = false);
+    const keys = keysOf(e);
+    if (!keys) return;
+    // Windows keeps the Win key for itself, and a shortcut without Ctrl or Alt would fire while typing
+    if (!e.ctrlKey && !e.altKey) return (keysError = 'Include Ctrl or Alt, for example Ctrl+Shift+N.');
+    recording = false;
+    try { capture.keys = await invoke('set_capture_keys', { keys }); keysError = null; }
+    catch (err) { keysError = String(err); }
+  }
+
   const themes = [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']];
   const styles = [['liquid', 'Liquid glass'], ['topo', 'Contour lines'], ['none', 'None']];
   const accents = [['gold', 'Gold'], ['ink', 'Ink blue'], ['terracotta', 'Terracotta'], ['moss', 'Moss']];
 </script>
+
+<svelte:window onkeydowncapture={recordKeys} />
 
 <div class="settings">
   <h1>Settings</h1>
@@ -69,11 +88,15 @@
 
   <h2>Notes</h2>
   <div class="set-row">
-    <div><div class="t">Notes folder</div><div class="path">Documents\Envelo</div></div>
+    <div><div class="t">Notes folder</div><div class="path">Documents\Plico</div></div>
   </div>
   <div class="set-row">
-    <div><div class="t">Quick capture shortcut</div><div class="d">Opens a small note box over any app.</div></div>
-    <span class="hint"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Space</kbd></span>
+    <div><div class="t">Quick capture shortcut</div><div class="d" class:err={keysError}>{keysError ?? 'Opens a small note box over any app.'}</div></div>
+    <span class="keys">
+      {#if recording}<span class="d">Press the new keys</span>
+      {:else}<span class="hint">{#each capture.keys.split('+') as k}<kbd>{k}</kbd>{/each}</span>{/if}
+      <button class="ghost-btn" disabled={!inTauri} onclick={() => { keysError = null; recording = !recording; }}>{recording ? 'Cancel' : 'Change'}</button>
+    </span>
   </div>
   <div class="set-row">
     <div>
@@ -106,6 +129,6 @@
       <div class="set-row"><div><div class="t">Password</div><div class="d">Opens the Locked folder.</div></div><button class="ghost-btn" onclick={() => begin('password')}>Change</button></div>
       <div class="set-row"><div><div class="t">Security question</div><div class="d">{vault.question}</div></div><button class="ghost-btn" onclick={() => begin('question')}>Change</button></div>
     {/if}
-    <div class="set-row"><div><div class="t">Locks again</div><div class="d">After 5 minutes without use, and whenever you close Envelo.</div></div></div>
+    <div class="set-row"><div><div class="t">Locks again</div><div class="d">After 5 minutes without use, and whenever you close Plico.</div></div></div>
   {/if}
 </div>

@@ -313,7 +313,7 @@ mod tests {
     use super::*;
 
     fn temp() -> PathBuf {
-        let d = std::env::temp_dir().join(format!("envelo-vault-test-{}", hex::encode(random::<6>())));
+        let d = std::env::temp_dir().join(format!("plico-vault-test-{}", hex::encode(random::<6>())));
         fs::create_dir_all(&d).unwrap();
         d
     }

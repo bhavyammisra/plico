@@ -1,8 +1,11 @@
-import { Node, Extension } from '@tiptap/core';
+import { Node, Mark, Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import Image from '@tiptap/extension-image';
+import Highlight from '@tiptap/extension-highlight';
 import Suggestion from '@tiptap/suggestion';
 import { resolveSrc, hostOf, openLink } from './media.js';
+import { TAG } from './notes.svelte.js';
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -65,18 +68,24 @@ export const LinkCard = Node.create({
   }),
 });
 
-/** The `/` menu. `onState` receives { items, index, rect, pick } while open and null when closed. */
+/**
+ * The `/` menu, and (configured with `char: '[['`) the note link picker. `items` is a list or a
+ * function of the typed query. `onState` receives { items, index, rect, pick } while open and null when closed.
+ */
 export const SlashMenu = Extension.create({
   name: 'slashMenu',
-  addOptions: () => ({ items: [], onState: () => {} }),
+  addOptions: () => ({ items: [], onState: () => {}, char: '/', allowSpaces: false }),
   addProseMirrorPlugins() {
-    const { items, onState } = this.options;
+    const { items, onState, char, allowSpaces } = this.options;
     let state = null;
     return [
       Suggestion({
         editor: this.editor,
-        char: '/',
-        items: ({ query }) => items.filter((i) => (i.label + ' ' + (i.keys ?? '')).toLowerCase().includes(query.toLowerCase())),
+        char,
+        allowSpaces,
+        pluginKey: new PluginKey(this.name),
+        items: ({ query }) => (typeof items === 'function' ? items(query)
+          : items.filter((i) => (i.label + ' ' + (i.keys ?? '')).toLowerCase().includes(query.toLowerCase()))),
         command: ({ editor, range, props }) => props.run(editor.chain().focus().deleteRange(range), editor),
         render: () => ({
           onStart: (p) => { state = { items: p.items, index: 0, rect: p.clientRect?.(), pick: (i) => p.command(p.items[i]) }; onState(state); },
@@ -118,4 +127,119 @@ export const TrailingParagraph = Extension.create({
       }),
     ];
   },
+});
+
+/** Text colour, saved as `<span data-color="red">` (a name, not a hex) so each theme shows a readable shade. */
+export const TEXT_COLORS = ['red', 'amber', 'green', 'blue', 'grey'];
+export const TextColor = Mark.create({
+  name: 'textColor',
+  addAttributes: () => ({ color: { default: null, parseHTML: (el) => el.getAttribute('data-color'), renderHTML: (a) => ({ 'data-color': a.color }) } }),
+  parseHTML: () => [{ tag: 'span[data-color]', getAttrs: (el) => (TEXT_COLORS.includes(el.getAttribute('data-color')) ? null : false) }],
+  renderHTML: ({ HTMLAttributes }) => ['span', HTMLAttributes, 0],
+  addCommands() {
+    return { setTextColor: (color) => ({ commands }) => (color ? commands.setMark(this.name, { color }) : commands.unsetMark(this.name)) };
+  },
+});
+
+/** Highlight in colours, saved as `<mark data-color="green">` like text colour; a plain `<mark>` is the usual yellow. */
+export const HIGHLIGHT_COLORS = ['red', 'green', 'blue', 'grey'];
+export const ColorHighlight = Highlight.extend({
+  addAttributes: () => ({
+    color: { default: null, parseHTML: (el) => el.getAttribute('data-color'), renderHTML: (a) => (a.color ? { 'data-color': a.color } : {}) },
+  }),
+}).configure({ multicolor: true });
+
+/**
+ * A link to another note by its title, written in the file as `[[Title]]` (the same as Obsidian),
+ * shown as a clickable chip. Clicking is handled by the editor (`onopenlink`).
+ */
+export const NoteLink = Node.create({
+  name: 'noteLink',
+  group: 'inline',
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes: () => ({ title: { default: '' } }),
+  parseHTML: () => [{ tag: 'a[data-note-link]', priority: 60, getAttrs: (el) => ({ title: el.getAttribute('data-note-link') }) }],
+  renderHTML: ({ node }) => ['a', { 'data-note-link': node.attrs.title, class: 'note-link', title: 'Open this note' }, node.attrs.title],
+  addStorage: () => ({
+    markdown: {
+      serialize(state, node) { state.write(`[[${node.attrs.title}]]`); },
+      parse: {
+        // turns [[Title]] in the file into the chip; titles can't contain brackets, | or new lines
+        setup(md) {
+          md.inline.ruler.before('link', 'note_link', (st, silent) => {
+            const m = /^\[\[([^\[\]|\n]+)\]\]/.exec(st.src.slice(st.pos));
+            if (!m) return false;
+            if (!silent) {
+              const t = st.push('html_inline', '', 0);
+              const title = esc(m[1].trim());
+              t.content = `<a data-note-link="${title}">${title}</a>`;
+            }
+            st.pos += m[0].length;
+            return true;
+          });
+        },
+      },
+    },
+  }),
+});
+
+/** Titles a note links to, from its Markdown. */
+export const linksIn = (body) => [...body.matchAll(/\[\[([^\[\]|\n]+)\]\]/g)].map((m) => m[1].trim().toLowerCase());
+
+/** Colours #tags in the text (the text itself is unchanged); Ctrl+click is handled by the editor. */
+export const Tags = Extension.create({
+  name: 'tags',
+  addProseMirrorPlugins() {
+    const find = (doc) => {
+      const decos = [];
+      doc.descendants((node, pos, parent) => {
+        if (!node.isText || parent?.type.name === 'codeBlock' || node.marks.some((m) => m.type.name === 'code' || m.type.name === 'link')) return;
+        for (const m of node.text.matchAll(TAG)) {
+          const start = pos + m.index + m[0].length - m[1].length;
+          decos.push(Decoration.inline(start, start + m[1].length, { class: 'tag', 'data-tag': m[1].slice(1).toLowerCase(), title: 'Ctrl+click to see notes with this tag' }));
+        }
+      });
+      return DecorationSet.create(doc, decos);
+    };
+    return [
+      new Plugin({
+        key: new PluginKey('tags'),
+        state: { init: (_, { doc }) => find(doc), apply: (tr, old) => (tr.docChanged ? find(tr.doc) : old) },
+        props: { decorations(state) { return this.getState(state); } },
+      }),
+    ];
+  },
+});
+
+/**
+ * Markdown reads a bullet list and a checklist written one after the other as a single list, which
+ * showed up as an empty checkbox. This splits such a list back into a bullet list and a checklist.
+ */
+export const SplitMixedLists = Extension.create({
+  name: 'splitMixedLists',
+  addStorage: () => ({
+    markdown: {
+      parse: {
+        updateDOM(root) {
+          for (const list of root.querySelectorAll('ul.contains-task-list')) {
+            const items = [...list.children];
+            const isTask = (li) => li.classList.contains('task-list-item');
+            if (items.every(isTask)) continue;
+            let run = null;
+            for (const li of items) {
+              if (!run || isTask(li) !== isTask(run.lastElementChild)) {
+                run = document.createElement('ul');
+                if (isTask(li)) { run.className = 'contains-task-list'; run.setAttribute('data-type', 'taskList'); }
+                list.before(run);
+              }
+              run.append(li);
+            }
+            list.remove();
+          }
+        },
+      },
+    },
+  }),
 });

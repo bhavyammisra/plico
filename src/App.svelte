@@ -5,7 +5,7 @@
   import { listen } from '@tauri-apps/api/event';
   import {
     Minus, Square, X, PanelLeft, SquarePen, Notebook, Settings as Gear, Search, Maximize2, Minimize2, Trash2,
-    Pin, PinOff, Folder, FolderInput, Plus, RotateCcw, Check, Lock, LockOpen, FolderOutput,
+    Pin, PinOff, Folder, Hash, FolderInput, Plus, RotateCcw, Check, Lock, LockOpen, FolderOutput, History, ChevronLeft, ChevronRight, Printer,
   } from 'lucide-svelte';
   import Locked from './lib/Locked.svelte';
   import * as V from './lib/vault.svelte.js';
@@ -13,9 +13,11 @@
   import Editor from './lib/Editor.svelte';
   import Settings from './lib/Settings.svelte';
   import { initMedia } from './lib/media.js';
+  import { settings, set, capture } from './lib/settings.svelte.js';
+  import { linksIn } from './lib/extensions.js';
   import {
-    store, load, refresh, flushAll, visible, select, create, edit, remove, flush, groupOf, timeOf, stampOf,
-    togglePin, moveTo, newFolder, renameFolder, deleteFolder, loadTrash, restore, deleteForever, daysLeft,
+    store, load, refresh, append, diskChanged, haystack, onlyInPicture, allTags, flushAll, visible, select, create, edit, remove, flush, groupOf, timeOf, stampOf,
+    dates, versionsOf, restoreVersion, togglePin, moveTo, newFolder, renameFolder, deleteFolder, loadTrash, restore, deleteForever, daysLeft,
   } from './lib/notes.svelte.js';
 
   const win = '__TAURI_INTERNALS__' in window ? getCurrentWindow() : null;
@@ -34,7 +36,33 @@
   const inLocked = $derived(store.view === 'locked');
   const keyOf = (n) => (inLocked ? n.key : n.id);
   let confirmLockedDelete = $state(false);
-  const matches = (n, words) => words.every((w) => (n.title + '\n' + n.body).toLowerCase().includes(w));
+  let past = $state(null); // { note, list, index } while looking through a note's earlier versions
+
+  async function openHistory(n) {
+    past = { id: n.id, note: n, list: [], index: 0, loading: true };
+    try {
+      const list = await versionsOf(n);
+      if (past?.id === n.id) past = { id: n.id, note: n, list: list.map((v, i) => ({ id: `v${i}`, body: v.body, saved: v.saved, rev: 0 })), index: 0 };
+    } catch (e) { past = null; store.error = `Couldn't read this note's history: ${e}`; }
+  }
+
+  /** Print, or Save as PDF from the print dialog: just the page, always in the light theme. */
+  function printNote(n) {
+    const root = document.documentElement, theme = root.dataset.theme, title = document.title;
+    root.dataset.theme = 'light';
+    document.title = n.title || 'Note'; // the suggested PDF file name
+    addEventListener('afterprint', () => { root.dataset.theme = theme; document.title = title; }, { once: true });
+    window.print();
+  }
+
+  async function putBack() {
+    const { note: n, list, index } = past;
+    past = null;
+    try { await restoreVersion(n, list[index].body); }
+    catch (e) { store.error = `Couldn't restore that version: ${e}`; }
+  }
+  const matches = (n, words) => { const hay = haystack(n); return words.every((w) => hay.includes(w)); };
+  const searchWords = $derived(store.query.toLowerCase().split(/\s+/).filter(Boolean));
   const items = $derived.by(() => {
     const words = store.query.toLowerCase().split(/\s+/).filter(Boolean);
     if (inLocked) return vault.unlocked && !vault.resetting ? [...vault.notes].sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified)).filter((n) => matches(n, words)) : [];
@@ -51,9 +79,28 @@
     return out;
   });
   const note = $derived(store.notes.find((n) => n.id === store.currentId) ?? null);
+
+  // notes whose text has a [[link]] to the open note's title
+  const backlinks = $derived.by(() => {
+    const t = note?.title.trim().toLowerCase();
+    if (!t) return [];
+    return store.notes.filter((n) => n !== note && linksIn(n.body).includes(t))
+      .sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
+  });
+
+  /** Opens the note a [[link]] names, or starts it if there isn't one yet. */
+  function openNoteLink(title) {
+    const t = title.trim().toLowerCase();
+    const target = store.notes.find((n) => n.title.trim().toLowerCase() === t);
+    store.query = '';
+    if (!target) return create(`# ${title.trim()}`);
+    if (store.view !== 'all' && !(store.view === `folder:${target.folder}`)) store.view = 'all';
+    select(target.id);
+  }
   const trashed = $derived(store.trash.find((t) => t.id === store.trashId) ?? null);
   const locked = $derived(vault.notes.find((n) => n.key === vault.currentId) ?? null);
   const count = (folder) => store.notes.filter((n) => n.folder === folder).length;
+  const tags = $derived(allTags());
   const saved = (n) => n.path || n.body.trim();
 
   // contour patch per note: a stable offset into the map
@@ -116,6 +163,7 @@
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === 'n') { e.preventDefault(); newNote(); }
     else if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); page = 'notes'; focusMode = false; tick().then(() => search?.focus()); }
+    else if (mod && e.key.toLowerCase() === 'p') { e.preventDefault(); if (page === 'notes' && note && !inTrash && !inLocked) printNote(note); }
     else if (mod && e.key === '.') { e.preventDefault(); focusMode = !focusMode; }
     else if (mod && e.key === '\\') { e.preventDefault(); sidebar = !sidebar; }
     else if (e.key === 'Escape') { if (moveMenu) moveMenu = false; else if (focusMode) focusMode = false; }
@@ -169,6 +217,9 @@
     }
     if (win) {
       listen('notes-changed', () => refresh());
+      listen('capture-append', ({ payload }) => append(payload.path, payload.md));
+      listen('disk-changed', ({ payload }) => diskChanged(payload));
+      listen('picture-text', ({ payload: [src, text] }) => (store.pictureText = { ...store.pictureText, [src]: text }));
       // Quit from the tray: save anything still pending, then exit
       listen('quit-requested', async () => { await flushAll(); if (vault.unlocked) await V.lock(); invoke('quit'); });
     }
@@ -189,11 +240,11 @@
 <div class="window">
   <div class="titlebar" data-tauri-drag-region>
     <img class="app-ico" src="/icon.svg" alt="" data-tauri-drag-region />
-    <span class="name" data-tauri-drag-region>Envelo</span>
+    <span class="name" data-tauri-drag-region>Plico</span>
     <div class="caption">
       <button aria-label="Minimise" onclick={() => win?.minimize()}><Minus {...icon} /></button>
       <button aria-label="Maximise" onclick={() => win?.toggleMaximize()}><Square size={14} strokeWidth={1.5} /></button>
-      <button class="close" aria-label="Close to tray" title="Close (Envelo keeps running in the tray)" onclick={closeToTray}><X {...icon} /></button>
+      <button class="close" aria-label="Close to tray" title="Close (Plico keeps running in the tray)" onclick={closeToTray}><X {...icon} /></button>
     </div>
   </div>
 
@@ -230,6 +281,15 @@
           onkeydown={(e) => { if (e.key === 'Enter') finishNaming(); if (e.key === 'Escape') naming = null; }} onblur={finishNaming} />
       {/if}
 
+      {#if tags.length}
+        <div class="side-head">Tags</div>
+        {#each tags as [t, c] (t)}
+          <button class="nav" aria-current={page === 'notes' && store.view === `tag:${t}`} onclick={() => show(`tag:${t}`)}>
+            <Hash {...icon} /><span class="label">{t}</span><span class="count">{c}</span>
+          </button>
+        {/each}
+      {/if}
+
       <div class="side-head">Private</div>
       <button class="nav" aria-current={page === 'notes' && inLocked} onclick={() => show('locked')}>
         {#if vault.unlocked}<LockOpen {...icon} />{:else}<Lock {...icon} />{/if}Locked
@@ -253,7 +313,7 @@
               <button class="row" role="option" aria-selected={keyOf(n) === currentKey} aria-current={keyOf(n) === currentKey} onclick={() => pick(n)}>
                 {#if keyOf(n) === currentKey}{#key keyOf(n)}<div class="topo" aria-hidden="true" style:--pos={patch(n)}></div>{/key}{/if}
                 <div class="row-title">{#if n.pinned}<Pin size={13} strokeWidth={1.5} />{/if}{n.title || (n.preview ? 'Untitled' : 'New note')}</div>
-                <div class="row-meta"><time>{timeOf(n.modified)}</time><span>{n.preview}</span></div>
+                <div class="row-meta"><time>{timeOf(n.modified)}</time><span>{#if onlyInPicture(n, searchWords)}<em class="in-pic">Found in a picture</em> {/if}{n.preview}</span></div>
               </button>
             {/each}
           {:else}
@@ -306,6 +366,21 @@
             </div>
             <article class="doc"><Editor note={trashed} readonly /></article>
           {/if}
+        {:else if note && past?.id === note.id}
+          {@const v = past.list[past.index]}
+          <div class="trash-bar">
+            {#if past.loading}<span></span>
+            {:else if v}
+              <span title="Version {past.index + 1} of {past.list.length}">Saved {new Date(v.saved).toLocaleString(dates.locale, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: dates.hour12 })}</span>
+              <button class="icon-btn" aria-label="Older version" title="Older" disabled={past.index === past.list.length - 1} onclick={() => past.index++}><ChevronLeft {...icon} /></button>
+              <button class="icon-btn" aria-label="Newer version" title="Newer" disabled={past.index === 0} onclick={() => past.index--}><ChevronRight {...icon} /></button>
+              <button class="ghost-btn" title="Restore this version (the current text is kept as a version too)" onclick={putBack}><RotateCcw size={14} strokeWidth={1.5} />Restore</button>
+            {:else}
+              <span>No earlier versions yet. Plico keeps one every 10 minutes while you edit.</span>
+            {/if}
+            <button class="icon-btn" aria-label="Close earlier versions" title="Close" onclick={() => (past = null)}><X {...icon} /></button>
+          </div>
+          {#if v}{#key v.id}<article class="doc"><Editor note={v} readonly /></article>{/key}{/if}
         {:else if note}
           <div class="editor-bar">
             <button class="icon-btn" aria-label={note.pinned ? 'Unpin note' : 'Pin note'} aria-pressed={note.pinned} title={note.pinned ? 'Unpin' : 'Pin to the top'} onclick={() => togglePin(note)}>
@@ -324,6 +399,8 @@
                 </div>
               {/if}
             </div>
+            <button class="icon-btn" aria-label="Print or save as PDF (Ctrl+P)" title="Print or save as PDF  Ctrl+P" onclick={() => printNote(note)}><Printer {...icon} /></button>
+            <button class="icon-btn" aria-label="Earlier versions" title="Earlier versions" onclick={() => openHistory(note)}><History {...icon} /></button>
             <button class="icon-btn" aria-label="Focus mode (Ctrl+.)" title="Focus mode  Ctrl+." onclick={() => (focusMode = !focusMode)}>
               {#if focusMode}<Minimize2 {...icon} />{:else}<Maximize2 {...icon} />{/if}
             </button>
@@ -331,7 +408,16 @@
           </div>
           <article class="doc">
             <div class="stamp">{stampOf(note)}{#if note.folder} · {note.folder}{/if}</div>
-            <Editor {note} onchange={(md) => edit(note, md)} />
+            <Editor {note} onchange={(md) => edit(note, md)} onopenlink={openNoteLink} ontag={(t) => show(`tag:${t}`)}
+              linkTitles={() => store.notes.filter((n) => n !== note && n.title).map((n) => n.title)} />
+            {#if backlinks.length}
+              <nav class="backlinks" aria-label="Linked from">
+                <div class="label">Linked from</div>
+                {#each backlinks as b (b.id)}
+                  <button onclick={() => select(b.id)}><span>{b.title}</span><small>{timeOf(b.modified)}</small></button>
+                {/each}
+              </nav>
+            {/if}
           </article>
         {:else if store.loaded}
           <div class="doc-empty">Press Ctrl+N to start a note.</div>
@@ -342,6 +428,17 @@
     {/if}
   </div>
 </div>
+
+{#if !settings.introDone && store.loaded}
+  <aside class="intro" aria-label="Quick note">
+    <div class="t">Quick note from anywhere</div>
+    <p>Press {#each capture.keys.split('+') as k}<kbd>{k}</kbd>{/each}in any app to write something down. Closing Plico keeps it in the tray, so this stays instant. You can change the keys in Settings.</p>
+    <div class="intro-actions">
+      {#if win}<button class="ghost-btn" onclick={() => { set('introDone', true); invoke('open_capture'); }}>Try it now</button>{/if}
+      <button class="ghost-btn" onclick={() => set('introDone', true)}>Got it</button>
+    </div>
+  </aside>
+{/if}
 
 {#if store.error}
   <div class="toast" role="alert">{store.error}<button class="ghost-btn" onclick={() => (store.error = null)}>Dismiss</button></div>

@@ -1,3 +1,5 @@
+mod history;
+mod ocr;
 mod vault;
 
 use serde::Serialize;
@@ -7,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager, WindowEvent};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 #[derive(Serialize)]
 struct Note {
@@ -35,13 +37,13 @@ struct Front {
     folder: Option<String>, // only in .trash: where the note came from
 }
 
-/// Notes live as plain .md files in Documents\Envelo.
+/// Notes live as plain .md files in Documents\Plico.
 fn root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     // dev builds can point at a scratch folder so testing never touches real notes
-    let test_dir = cfg!(debug_assertions).then(|| std::env::var_os("ENVELO_NOTES_DIR")).flatten();
+    let test_dir = cfg!(debug_assertions).then(|| std::env::var_os("PLICO_NOTES_DIR")).flatten();
     let dir = match test_dir {
         Some(d) => PathBuf::from(d),
-        None => app.path().document_dir().map_err(|e| e.to_string())?.join("Envelo"),
+        None => app.path().document_dir().map_err(|e| e.to_string())?.join("Plico"),
     };
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
@@ -118,7 +120,7 @@ fn file_stem(title: &str) -> String {
     if s.is_empty() { "Untitled".into() } else { s }
 }
 
-/// Folder names: one level, Windows-safe, and not one of Envelo's own folders.
+/// Folder names: one level, Windows-safe, and not one of Plico's own folders.
 fn folder_name(name: &str) -> Result<String, String> {
     let n = file_stem(name);
     if name.trim().is_empty() || n.starts_with('.') || n.eq_ignore_ascii_case("images") {
@@ -153,7 +155,7 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     for e in entries.flatten() {
         let p = e.path();
         if e.file_name().to_string_lossy().starts_with('.') {
-            continue; // .trash, .locked, .envelo
+            continue; // .trash, .locked, .plico
         }
         if p.is_dir() {
             walk(&p, out);
@@ -168,21 +170,64 @@ fn list_notes(app: tauri::AppHandle) -> Result<Vec<Note>, String> {
     let root = root(&app)?;
     let mut files = Vec::new();
     walk(&root, &mut files);
-    Ok(files
-        .iter()
-        .filter_map(|p| {
-            let (f, body) = split(&fs::read_to_string(p).ok()?);
-            let modified = f.modified.filter(|m| !m.is_empty()).unwrap_or_else(|| mtime(p));
-            Some(Note {
-                path: rel(&root, p),
-                created: f.created.filter(|c| !c.is_empty()).unwrap_or_else(|| modified.clone()),
-                modified,
-                body,
-                pinned: f.pinned,
-            })
-        })
-        .collect())
+    Ok(files.iter().filter_map(|p| note_at(&root, p)).collect())
 }
+
+fn note_at(root: &Path, p: &Path) -> Option<Note> {
+    let (f, body) = split(&fs::read_to_string(p).ok()?);
+    let modified = f.modified.filter(|m| !m.is_empty()).unwrap_or_else(|| mtime(p));
+    Some(Note {
+        path: rel(root, p),
+        created: f.created.filter(|c| !c.is_empty()).unwrap_or_else(|| modified.clone()),
+        modified,
+        body,
+        pinned: f.pinned,
+    })
+}
+
+/// Text read from each picture so far (picture path to text), for search.
+#[tauri::command]
+fn picture_texts(app: tauri::AppHandle) -> Result<std::collections::HashMap<String, String>, String> {
+    Ok(ocr::load(&root(&app)?))
+}
+
+/// One note as it is on disk now, or nothing if the file is gone.
+#[tauri::command]
+fn read_note(app: tauri::AppHandle, path: String) -> Result<Option<Note>, String> {
+    let root = root(&app)?;
+    Ok(note_at(&root, &inside(&root, &path)?))
+}
+
+/// Notes, and folders, outside Plico's own hidden folders and pictures.
+fn watched(root: &Path, p: &Path) -> bool {
+    p.strip_prefix(root).is_ok_and(|r| {
+        r.components().next().is_some()
+            && !r.components().any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
+            && !r.starts_with("images")
+    }) && p.extension().map_or(true, |x| x == "md")
+}
+
+/// Other programs (OneDrive, phone sync, a text editor) can change the notes folder; tell the main
+/// window which paths changed so it reloads them instead of later saving over them.
+fn watch_notes(app: &tauri::AppHandle, root: PathBuf) -> notify::Result<notify::RecommendedWatcher> {
+    use notify::Watcher;
+    let app = app.clone();
+    let base = root.clone();
+    let mut w = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        let Ok(ev) = res else { return };
+        if ev.kind.is_access() {
+            return;
+        }
+        let paths: Vec<String> = ev.paths.iter().filter(|p| watched(&base, p)).map(|p| rel(&base, p)).collect();
+        if !paths.is_empty() {
+            let _ = app.emit_to("main", "disk-changed", paths);
+        }
+    })?;
+    w.watch(&root, notify::RecursiveMode::Recursive)?;
+    Ok(w)
+}
+
+struct NotesWatcher(#[allow(dead_code)] std::sync::Mutex<notify::RecommendedWatcher>);
 
 /// Writes the note (renaming the file when its title changed) and returns it with its new path.
 /// `folder` places a brand-new note; `modified` keeps the old time for changes that aren't edits (pinning).
@@ -216,6 +261,9 @@ fn save_note(
         pinned: pinned.unwrap_or(false),
         folder: None,
     };
+    if let Some(previous) = old.as_ref().and_then(|o| fs::read_to_string(o).ok()).map(|t| split(&t).1).filter(|b| *b != body) {
+        history::keep(&root, &created, &previous, false);
+    }
     write_atomic(&target, &join(&front, &body))?;
     if let Some(old) = old.filter(|o| *o != target) {
         fs::remove_file(old).map_err(|e| e.to_string())?;
@@ -298,7 +346,30 @@ fn restore_note(app: tauri::AppHandle, name: String) -> Result<String, String> {
 #[tauri::command]
 fn delete_forever(app: tauri::AppHandle, name: String) -> Result<(), String> {
     let root = root(&app)?;
-    fs::remove_file(trash_file(&root, &name)?).map_err(|e| e.to_string())
+    let file = trash_file(&root, &name)?;
+    forget_history(&root, &file);
+    fs::remove_file(file).map_err(|e| e.to_string())
+}
+
+fn forget_history(root: &Path, file: &Path) {
+    if let Some(created) = fs::read_to_string(file).ok().and_then(|t| split(&t).0.created) {
+        history::forget(root, &created);
+    }
+}
+
+/// A note's earlier versions, newest first.
+#[tauri::command]
+fn list_versions(app: tauri::AppHandle, created: String) -> Result<Vec<history::Version>, String> {
+    Ok(history::list(&root(&app)?, &created))
+}
+
+/// Keeps the note's current text as a version right now (before an old version replaces it).
+#[tauri::command]
+fn keep_version(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let root = root(&app)?;
+    let (front, body) = split(&fs::read_to_string(inside(&root, &path)?).map_err(|e| e.to_string())?);
+    history::keep(&root, &front.created.unwrap_or_default(), &body, true);
+    Ok(())
 }
 
 /// Notes stay in Recently deleted for 30 days, then they're removed for good.
@@ -307,6 +378,7 @@ fn purge_trash(root: &Path) {
     let cutoff = chrono::Local::now().naive_local() - chrono::Duration::days(30);
     for e in entries.flatten() {
         if deleted_at(&e.file_name().to_string_lossy()).is_some_and(|t| t < cutoff) {
+            forget_history(root, &e.path());
             let _ = fs::remove_file(e.path());
         }
     }
@@ -404,6 +476,7 @@ fn save_image(app: tauri::AppHandle, request: tauri::ipc::Request) -> Result<Str
     let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S-%3f");
     let name = format!("{stamp}.{ext}");
     fs::write(dir.join(&name), bytes).map_err(|e| e.to_string())?;
+    ocr::index_in_background(app.clone(), root(&app)?);
     Ok(format!("images/{name}"))
 }
 
@@ -428,7 +501,7 @@ async fn fetch_title(url: String) -> Option<String> {
     tauri::async_runtime::spawn_blocking(move || {
         use std::io::Read;
         let agent = ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(5)).redirects(5).build();
-        let res = agent.get(&url).set("User-Agent", "Envelo/0.1 (notes app)").call().ok()?;
+        let res = agent.get(&url).set("User-Agent", "Plico/0.1 (notes app)").call().ok()?;
         let mut buf = String::new();
         res.into_reader().take(256 * 1024).read_to_string(&mut buf).ok()?;
         page_title(&buf)
@@ -505,8 +578,9 @@ fn lock_note(app: tauri::AppHandle, state: tauri::State<vault::Vault>, path: Str
     let src = inside(&root, &path)?;
     let (front, body) = split(&fs::read_to_string(&src).map_err(|e| e.to_string())?);
     let created = front.created.unwrap_or_else(|| chrono::Local::now().to_rfc3339());
-    let note = vault::save(&root, &state, None, body, created)?;
+    let note = vault::save(&root, &state, None, body, created.clone())?;
     fs::remove_file(&src).map_err(|e| e.to_string())?;
+    history::forget(&root, &created);
     Ok(note)
 }
 
@@ -522,7 +596,7 @@ fn unlock_note(app: tauri::AppHandle, state: tauri::State<vault::Vault>, id: Str
     Ok(rel(&root, &target))
 }
 
-/// Set when Windows starts Envelo at sign-in: it waits in the tray instead of opening a window.
+/// Set when Windows starts Plico at sign-in: it waits in the tray instead of opening a window.
 static STARTED_HIDDEN: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
@@ -544,6 +618,29 @@ fn show_main(app: &tauri::AppHandle) {
     }
 }
 
+/// The Windows region format (`en-IN`) and whether its clock is 12-hour, for showing dates the way
+/// the rest of Windows does.
+#[tauri::command]
+fn date_format() -> (String, bool) {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::Globalization::{GetLocaleInfoEx, GetUserDefaultLocaleName, LOCALE_STIMEFORMAT};
+        let text = |buf: &[u16], n: i32| String::from_utf16_lossy(&buf[..(n.max(1) as usize - 1)]);
+        let mut name = [0u16; 85];
+        let n = GetUserDefaultLocaleName(&mut name);
+        let mut time = [0u16; 80];
+        let t = GetLocaleInfoEx(windows::core::PCWSTR::null(), LOCALE_STIMEFORMAT, Some(&mut time));
+        return (text(&name, n), !text(&time, t).contains('H'));
+    }
+    #[allow(unreachable_code)]
+    (String::new(), false)
+}
+
+#[tauri::command]
+fn open_capture(app: tauri::AppHandle) {
+    show_capture(&app);
+}
+
 fn show_capture(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("capture") {
         let _ = w.center();
@@ -563,14 +660,58 @@ fn request_quit(app: &tauri::AppHandle) {
     });
 }
 
+const DEFAULT_KEYS: &str = "Ctrl+Shift+Space";
+
+fn keys_file(app: &tauri::AppHandle) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("capture-shortcut.txt"))
+}
+
+/// The quick capture shortcut, as written in Settings (`Ctrl+Shift+Space`).
+fn saved_keys(app: &tauri::AppHandle) -> String {
+    keys_file(app)
+        .and_then(|f| fs::read_to_string(f).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| s.parse::<Shortcut>().is_ok())
+        .unwrap_or_else(|| DEFAULT_KEYS.to_string())
+}
+
+struct CaptureMenu(MenuItem<tauri::Wry>);
+
+#[tauri::command]
+fn capture_keys(app: tauri::AppHandle) -> String {
+    saved_keys(&app)
+}
+
+/// Swaps the quick capture shortcut; the old one keeps working if the new one is taken.
+#[tauri::command]
+fn set_capture_keys(app: tauri::AppHandle, keys: String) -> Result<String, String> {
+    let new: Shortcut = keys.parse().map_err(|_| format!("{keys} can't be used as a shortcut."))?;
+    let old = saved_keys(&app).parse::<Shortcut>().ok();
+    if old != Some(new) {
+        let gs = app.global_shortcut();
+        gs.register(new).map_err(|_| format!("{keys} is already used by Windows or another app. Try a different one."))?;
+        if let Some(o) = old {
+            let _ = gs.unregister(o);
+        }
+    }
+    let f = keys_file(&app).ok_or("Can't find Plico's settings folder")?;
+    fs::create_dir_all(f.parent().unwrap_or(&f)).map_err(|e| e.to_string())?;
+    fs::write(&f, &keys).map_err(|e| e.to_string())?;
+    if let Some(m) = app.try_state::<CaptureMenu>() {
+        let _ = m.0.set_text(format!("Quick note    {keys}"));
+    }
+    Ok(keys)
+}
+
 fn tray(app: &tauri::App) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Open Envelo", true, None::<&str>)?;
-    let capture = MenuItem::with_id(app, "capture", "Quick note    Ctrl+Shift+Space", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Envelo", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "Open Plico", true, None::<&str>)?;
+    let capture = MenuItem::with_id(app, "capture", format!("Quick note    {}", saved_keys(app.handle())), true, None::<&str>)?;
+    app.manage(CaptureMenu(capture.clone()));
+    let quit = MenuItem::with_id(app, "quit", "Quit Plico", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &capture, &PredefinedMenuItem::separator(app)?, &quit])?;
     TrayIconBuilder::with_id("tray")
         .icon(app.default_window_icon().cloned().expect("app icon"))
-        .tooltip("Envelo")
+        .tooltip("Plico")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, e| match e.id.as_ref() {
@@ -592,33 +733,39 @@ fn tray(app: &tauri::App) -> tauri::Result<()> {
 pub fn run() {
     // set before anything starts: the window's page can finish loading before `setup` runs
     STARTED_HIDDEN.store(std::env::args().any(|a| a == "--hidden"), Ordering::Relaxed);
-    let capture_keys = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space);
     tauri::Builder::default()
         .manage(vault::Vault::default())
-        // a second launch (Start menu, taskbar) just brings the running Envelo forward
+        // a second launch (Start menu, taskbar) just brings the running Plico forward
         .plugin(tauri_plugin_single_instance::init(|app, _, _| show_main(app)))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |app, sc, ev| {
-                    if *sc == capture_keys && ev.state() == ShortcutState::Pressed {
+                // the capture shortcut is the only one Plico registers
+                .with_handler(|app, _, ev| {
+                    if ev.state() == ShortcutState::Pressed {
                         show_capture(app);
                     }
                 })
                 .build(),
         )
-        .setup(move |app| {
-            if let Err(e) = app.global_shortcut().register(capture_keys) {
-                eprintln!("Ctrl+Shift+Space is taken by another app: {e}");
+        .setup(|app| {
+            let keys = saved_keys(app.handle());
+            if let Err(e) = keys.parse::<Shortcut>().map_err(|e| e.to_string()).and_then(|k| app.global_shortcut().register(k).map_err(|e| e.to_string())) {
+                eprintln!("{keys} is taken by another app: {e}");
             }
             tray(app)?;
             if let Ok(r) = root(app.handle()) {
                 purge_trash(&r);
+                ocr::index_in_background(app.handle().clone(), r.clone());
+                match watch_notes(app.handle(), r) {
+                    Ok(w) => { app.manage(NotesWatcher(std::sync::Mutex::new(w))); }
+                    Err(e) => eprintln!("Can't watch the notes folder for outside changes: {e}"),
+                }
             }
             Ok(())
         })
-        // closing the window keeps Envelo in the tray so quick capture stays instant
+        // closing the window keeps Plico in the tray so quick capture stays instant
         .on_window_event(|w, e| {
             if let WindowEvent::CloseRequested { api, .. } = e {
                 if w.label() == "main" {
@@ -640,18 +787,40 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            list_notes, save_note, trash_note, notes_root, save_image, fetch_title, started_hidden, quit,
+            list_notes, read_note, picture_texts, save_note, trash_note, notes_root, save_image, fetch_title, started_hidden, quit,
             list_trash, restore_note, delete_forever, list_folders, create_folder, rename_folder, delete_folder, move_note,
             vault_status, vault_setup, vault_unlock, vault_lock, vault_set_password, vault_set_question,
-            locked_list, locked_save, locked_delete, lock_note, unlock_note
+            locked_list, locked_save, locked_delete, lock_note, unlock_note, list_versions, keep_version, capture_keys, set_capture_keys, open_capture, date_format
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Envelo");
+        .expect("error while running Plico");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn reads_the_windows_date_format() {
+        let (locale, twelve) = date_format();
+        println!("{locale} 12-hour: {twelve}");
+        assert!(locale.contains('-'), "got {locale:?}");
+    }
+
+    #[test]
+    fn watches_notes_and_folders_only() {
+        let r = Path::new("C:/n");
+        assert!(watched(r, Path::new("C:/n/Idea.md")));
+        assert!(watched(r, Path::new("C:/n/College/Idea.md")));
+        assert!(watched(r, Path::new("C:/n/College")));
+        assert!(!watched(r, Path::new("C:/n/Idea.md.tmp")));
+        assert!(!watched(r, Path::new("C:/n/.trash/Idea.md")));
+        assert!(!watched(r, Path::new("C:/n/.locked/x.note")));
+        assert!(!watched(r, Path::new("C:/n/images/a.png")));
+        assert!(!watched(r, Path::new("C:/n")));
+        assert!(!watched(r, Path::new("C:/elsewhere/Idea.md")));
+    }
 
     #[test]
     fn front_matter_round_trip() {

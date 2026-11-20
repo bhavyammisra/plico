@@ -1,15 +1,15 @@
 <p align="center">
-  <img src="public/icon.svg" width="88" alt="Envelo icon: a sealed envelope with a folded corner">
+  <img src="public/icon.svg" width="88" alt="Plico icon: a sealed envelope with a folded corner">
 </p>
 
-<h1 align="center">Envelo</h1>
+<h1 align="center">Plico</h1>
 
 <p align="center">
   A quiet, fast notes app for Windows. Thoughts, links and screenshots, kept as plain files on your laptop.
 </p>
 
 <p align="center">
-  <img src="design/screenshot-dark.png" width="820" alt="Envelo in dark mode: sidebar, notes list and an open note">
+  <img src="design/screenshot-dark.png" width="820" alt="Plico in dark mode: sidebar, notes list and an open note">
   <br>
   <sub>Design preview with sample notes</sub>
 </p>
@@ -18,29 +18,37 @@
 
 ## What it does
 
-Envelo is one place to drop anything: a passing thought, a link, a screenshot, or a proper
+Plico is one place to drop anything: a passing thought, a link, a screenshot, or a proper
 formatted note. It opens straight onto your last note, works fully offline, and stores every note
 as an ordinary Markdown file you can open in any editor.
 
-- **Quick capture from anywhere.** Press `Ctrl+Shift+Space` in any app, type, press Enter. The box
-  folds away and the note is saved.
+- **Quick capture from anywhere.** Press `Ctrl+Shift+Space` in any app (or your own keys, set in
+  Settings), type, press Enter. Start a new note or add to an existing one, and paste or drop
+  screenshots straight in.
 - **Writes like a modern editor.** Headings, bold, italic, underline, highlight, lists, checklists,
   quotes, tables and dividers. Type `/` for a block menu, or use Markdown shortcuts like `##`.
 - **Pictures and links.** Paste or drag in screenshots. Paste a link on its own line and it becomes
   a card with the page's title.
 - **Smart typography.** Straight quotes turn curly, `->` becomes an arrow, `...` becomes an ellipsis.
-- **Search, pins and folders.** Keyword search as you type, pinned notes at the top, real folders
-  on disk, and notes grouped by date.
+- **Search, pins and folders.** Keyword search as you type (it also finds text inside
+  screenshots, read on your laptop by Windows), pinned notes at the top, real folders on disk,
+  and notes grouped by date.
+- **Links and tags.** Type `[[` to link another note; each note lists the notes that link to it.
+  Write `#tags` anywhere and find them in the sidebar.
+- **Version history.** Earlier versions of each note are kept on your laptop and can be restored.
+- **Print or save as PDF** for any note (`Ctrl+P`).
+- **Plays well with other apps.** Edit a note in another editor or sync the folder with OneDrive,
+  and Plico picks up the change.
 - **Recently deleted.** Deleted notes wait 30 days and can be restored into the folder they came from.
 - **Locked folder.** Encrypted notes that open with a password, or with a security question if
   you forget it.
 - **Light and dark mode**, four accent colours, and a choice of how the open note is highlighted
   (liquid glass, contour lines, or nothing).
-- **Lives in the tray.** Closing the window keeps Envelo ready, and it can start with Windows so
+- **Lives in the tray.** Closing the window keeps Plico ready, and it can start with Windows so
   quick capture always works.
 
 <p align="center">
-  <img src="design/screenshot-light.png" width="49%" alt="Envelo in light mode">
+  <img src="design/screenshot-light.png" width="49%" alt="Plico in light mode">
   <img src="design/screenshot-capture.png" width="49%" alt="The quick capture box">
   <br>
   <sub>Light mode, and the quick capture box (<code>Ctrl+Shift+Space</code>)</sub>
@@ -49,8 +57,8 @@ as an ordinary Markdown file you can open in any editor.
 ## Install
 
 Build the installer (see [Build from source](#build-from-source)), then run
-`Envelo_0.1.0_x64-setup.exe` (about 2 MB). It installs for your user
-account only, so no administrator prompt. Envelo then appears in the Start menu and in Windows'
+`Plico_0.1.0_x64-setup.exe` (about 2 MB). It installs for your user
+account only, so no administrator prompt. Plico then appears in the Start menu and in Windows'
 Installed apps.
 
 Runs on Windows 10 and 11. It uses Windows' WebView2 runtime, which Windows 11 already has; the
@@ -66,22 +74,26 @@ installer fetches it if it's missing.
 | `Ctrl+1` / `2` / `3` | Heading 1 / 2 / 3 |
 | `Ctrl+0` | Body text |
 | `Ctrl+B` / `I` / `U` | Bold / italic / underline |
+| `Ctrl+P` | Print or save the note as PDF |
 | `Ctrl+.` | Focus mode |
+| `[[` | Link to another note |
 | `Ctrl+\` | Show or hide the sidebar |
 | `/` | Block menu (headings, lists, table, picture...) |
 | `Delete` in the list | Move the note to Recently deleted |
 
 ## Your notes
 
-Everything lives in `Documents\Envelo`:
+Everything lives in `Documents\Plico`:
 
 ```
-Documents\Envelo\
+Documents\Plico\
   Website ideas.md        a note (its file name follows its title)
-  College\                a folder you made in Envelo
+  College\                a folder you made in Plico
   images\                 pictures pasted into notes
   .trash\                 Recently deleted (kept 30 days)
   .locked\                the encrypted locked folder
+  .history\               earlier versions of each note
+  .plico\                 text read from pictures, for search
 ```
 
 Each note is Markdown with a short header for its dates and pin:
@@ -98,7 +110,7 @@ Sites and details worth keeping.
 ```
 
 Because they're plain files, backing up is just copying the folder, and OneDrive or any other sync
-tool works without setup. Nothing is sent anywhere. The only network request Envelo makes is
+tool works without setup. Nothing is sent anywhere. The only network request Plico makes is
 fetching a page title when you paste a link.
 
 ## The locked folder
@@ -108,7 +120,7 @@ fetching a page title when you paste a link.
   password and once from your security answer. Either one unlocks.
 - Locked notes are stored under random file names, so even titles stay hidden.
 - Five wrong tries in a row means a one minute wait. The folder locks again after 5 idle minutes and
-  whenever Envelo closes.
+  whenever Plico closes.
 - If you use the security answer, you must choose a new password before the notes appear.
 
 Good to know:
@@ -149,7 +161,7 @@ cargo test
 
 `npm run dev` opens the interface in a plain browser with notes kept in the browser, which is
 handy for checking layout. Folders, the locked folder and pictures need the real app. In dev
-builds, setting `ENVELO_NOTES_DIR` points Envelo at a scratch folder so tests never touch real notes.
+builds, setting `PLICO_NOTES_DIR` points Plico at a scratch folder so tests never touch real notes.
 
 ## How it's built
 
@@ -180,3 +192,9 @@ design/
 ```
 
 The full feature list and the decisions behind it are in [SPEC.md](SPEC.md).
+
+## Licence
+
+Copyright (c) 2026 Bhavyam Misra. All rights reserved. The code is public so anyone can check
+how Plico treats their notes, but it may not be copied, changed or redistributed without
+permission. See [LICENSE](LICENSE).
