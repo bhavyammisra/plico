@@ -1,6 +1,6 @@
 // shortcut: settings live in the web view's localStorage; move to .plico/settings.json when the notes folder becomes changeable.
 const KEY = 'plico.settings';
-const defaults = { theme: 'system', accent: 'gold', sel: 'liquid' };
+const defaults = { theme: 'system', accent: 'terracotta', sel: 'none' };
 
 let saved = {};
 try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch {}

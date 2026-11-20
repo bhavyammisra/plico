@@ -88,6 +88,10 @@
 
   <h2>Notes</h2>
   <div class="set-row">
+    <div><div class="t">Hide note text in the list</div><div class="d">The list shows only titles and times, so the lines under each title stay private on a shared screen.</div></div>
+    <button class="toggle" role="switch" aria-checked={!!settings.hidePreviews} aria-label="Hide note text in the list" onclick={() => set('hidePreviews', !settings.hidePreviews)}></button>
+  </div>
+  <div class="set-row">
     <div><div class="t">Notes folder</div><div class="path">Documents\Plico</div></div>
   </div>
   <div class="set-row">

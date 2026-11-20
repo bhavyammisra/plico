@@ -163,19 +163,23 @@ highlighted. Index kept in memory, built at start-up from the files.
 - Dark: Apple Notes colours. Grey sidebar (#1E1E1E), darker notes list (#161616), pure black
   note, white text, grey secondary text. The selected note gets the normal soft highlight (not
   filled with the accent); sidebar icons take the accent colour.
-- Accent colour chosen in Settings: Gold (default, like Apple Notes), Ink blue, Terracotta or
+- Accent colour chosen in Settings: Terracotta (default), Gold, Ink blue or
   Moss. Each has a light and a dark variant.
 - Soft rounded rectangles; no pill buttons, no emoji, no decorative animation.
 - Contour lines style: a faint topographic contour map behind its tile in the list (one
   small static SVG, tinted with the text colour, faded at the left edge). Each note shows a
   different patch of the map. It settles in once (about 0.7 s) when the note is selected, then
   stays still. With Windows "reduce animations" on, it appears without motion.
-- Default selected note style, Liquid glass (in the spirit of Apple's Liquid Glass): a clear,
+- Selected note style Liquid glass (in the spirit of Apple's Liquid Glass): a clear,
   untinted glass lens floats over the selected note. Its rounded edges refract the text beneath
-  (SVG displacement map, `design/lens-map.png`), with a bright rim highlight and a soft shadow.
+  (SVG displacement map drawn to the lens's exact size in `src/lib/glass.js`: the middle stays
+  clear and a 12 px rim bends what is under it), with a bright rim highlight and a soft shadow.
   Clicking another note glides the lens there with a slight springy settle (about 0.55 s).
   Only this one small element uses a backdrop filter.
-- Settings, "Selected note style": Liquid glass (default), Contour lines, or None (just the
+- Right-click a note in the list for Pin, Move to folder (including a new folder), Locked folder
+  and Delete.
+- Settings, "Hide note text in the list" (off by default): the list shows only titles and times.
+- Settings, "Selected note style": Liquid glass, Contour lines, or None (default: just the
   plain soft highlight, no effect).
 - Theme switch cross-fades in about 0.2 s (one GPU snapshot, no per-element transitions).
 - App icon: a sealed envelope on warm paper with a folded top-right corner (see mockup).

@@ -13,6 +13,7 @@
   import Editor from './lib/Editor.svelte';
   import Settings from './lib/Settings.svelte';
   import { initMedia } from './lib/media.js';
+  import { lensMap } from './lib/glass.js';
   import { settings, set, capture } from './lib/settings.svelte.js';
   import { linksIn } from './lib/extensions.js';
   import {
@@ -31,6 +32,16 @@
   let confirmFolder = $state(null); // folder waiting for a second click to remove
   let confirmForever = $state(false);
   let moveMenu = $state(false);
+  let ctx = $state(null); // { n, x, y } while a note's right-click menu is open
+
+  function openCtx(e, n) {
+    if (inTrash || inLocked) return;
+    e.preventDefault();
+    // keep the menu inside the window
+    ctx = { n, x: Math.min(e.clientX, innerWidth - 230), y: Math.max(8, Math.min(e.clientY, innerHeight - 160 - 34 * store.folders.length)) };
+  }
+
+  function ctxDo(fn) { const n = ctx.n; ctx = null; fn(n); }
 
   const inTrash = $derived(store.view === 'trash');
   const inLocked = $derived(store.view === 'locked');
@@ -122,6 +133,7 @@
       lens.style.setProperty('--sel-h', `${row.offsetHeight}px`);
       const f = document.getElementById('liquid');
       [f, f.querySelector('feImage')].forEach((el) => { el.setAttribute('width', row.offsetWidth); el.setAttribute('height', row.offsetHeight); });
+      f.querySelector('feImage').setAttribute('href', lensMap(row.offsetWidth, row.offsetHeight));
     });
   });
 
@@ -156,7 +168,11 @@
     const value = n?.value.trim();
     if (!value || value === n.from) return;
     if (n.from) await renameFolder(n.from, value);
-    else { const made = await newFolder(value); if (made) show(`folder:${made}`); }
+    else {
+      const made = await newFolder(value);
+      if (made && n.move) await moveTo(n.move, made); // "New folder" from a note's right-click menu
+      if (made) show(`folder:${made}`);
+    }
   }
 
   function onKey(e) {
@@ -166,7 +182,7 @@
     else if (mod && e.key.toLowerCase() === 'p') { e.preventDefault(); if (page === 'notes' && note && !inTrash && !inLocked) printNote(note); }
     else if (mod && e.key === '.') { e.preventDefault(); focusMode = !focusMode; }
     else if (mod && e.key === '\\') { e.preventDefault(); sidebar = !sidebar; }
-    else if (e.key === 'Escape') { if (moveMenu) moveMenu = false; else if (focusMode) focusMode = false; }
+    else if (e.key === 'Escape') { if (ctx) ctx = null; else if (moveMenu) moveMenu = false; else if (focusMode) focusMode = false; }
   }
 
   function listKey(e) {
@@ -227,13 +243,13 @@
   });
 </script>
 
-<svelte:window onkeydown={onKey} onclick={(e) => { if (moveMenu && !e.target.closest?.('.move')) moveMenu = false; }} />
+<svelte:window onkeydown={onKey} onresize={() => (ctx = null)}
+  onclick={(e) => { if (moveMenu && !e.target.closest?.('.move')) moveMenu = false; if (ctx && !e.target.closest?.('.ctx')) ctx = null; }} />
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <filter id="liquid" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" x="0" y="0" width="300" height="64" color-interpolation-filters="sRGB">
-    <feImage href="/lens-map.png" x="0" y="0" width="300" height="64" preserveAspectRatio="none" result="map" />
-    <feGaussianBlur in="SourceGraphic" stdDeviation="0.35" result="soft" />
-    <feDisplacementMap in="soft" in2="map" scale="14" xChannelSelector="R" yChannelSelector="G" />
+    <feImage x="0" y="0" width="300" height="64" preserveAspectRatio="none" result="map" />
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="18" xChannelSelector="R" yChannelSelector="G" />
   </filter>
 </svg>
 
@@ -310,10 +326,10 @@
           {#each groups as g (g.name)}
             <div class="group">{g.name}</div>
             {#each g.notes as n (keyOf(n))}
-              <button class="row" role="option" aria-selected={keyOf(n) === currentKey} aria-current={keyOf(n) === currentKey} onclick={() => pick(n)}>
+              <button class="row" role="option" aria-selected={keyOf(n) === currentKey} aria-current={keyOf(n) === currentKey} onclick={() => pick(n)} oncontextmenu={(e) => openCtx(e, n)}>
                 {#if keyOf(n) === currentKey}{#key keyOf(n)}<div class="topo" aria-hidden="true" style:--pos={patch(n)}></div>{/key}{/if}
                 <div class="row-title">{#if n.pinned}<Pin size={13} strokeWidth={1.5} />{/if}{n.title || (n.preview ? 'Untitled' : 'New note')}</div>
-                <div class="row-meta"><time>{timeOf(n.modified)}</time><span>{#if onlyInPicture(n, searchWords)}<em class="in-pic">Found in a picture</em> {/if}{n.preview}</span></div>
+                <div class="row-meta"><time>{timeOf(n.modified)}</time><span>{#if onlyInPicture(n, searchWords)}<em class="in-pic">Found in a picture</em> {/if}{#if !settings.hidePreviews}{n.preview}{/if}</span></div>
               </button>
             {/each}
           {:else}
@@ -438,6 +454,22 @@
       <button class="ghost-btn" onclick={() => set('introDone', true)}>Got it</button>
     </div>
   </aside>
+{/if}
+
+{#if ctx}
+  {@const n = ctx.n}
+  <div class="menu ctx" role="menu" aria-label="Note actions" style:left="{ctx.x}px" style:top="{ctx.y}px">
+    <button role="menuitem" onclick={() => ctxDo(togglePin)}>{#if n.pinned}<PinOff size={14} strokeWidth={1.5} />Unpin{:else}<Pin size={14} strokeWidth={1.5} />Pin to the top{/if}</button>
+    <div class="menu-label">Move to folder</div>
+    <button role="menuitem" onclick={() => ctxDo((m) => moveTo(m, null))}>{#if !n.folder}<Check size={14} strokeWidth={1.5} />{:else}<span class="ck"></span>{/if}No folder</button>
+    {#each store.folders as f (f)}
+      <button role="menuitem" onclick={() => ctxDo((m) => moveTo(m, f))}>{#if n.folder === f}<Check size={14} strokeWidth={1.5} />{:else}<span class="ck"></span>{/if}{f}</button>
+    {/each}
+    <button role="menuitem" class="muted" onclick={() => ctxDo((m) => { sidebar = true; naming = { from: null, value: '', move: m }; })}><Plus size={14} strokeWidth={1.5} />New folder</button>
+    {#if vault.exists}<button role="menuitem" class="muted" onclick={() => ctxDo(lockThis)}><Lock size={14} strokeWidth={1.5} />{vault.unlocked ? 'Locked folder' : 'Locked folder (unlock first)'}</button>{/if}
+    <div class="menu-sep"></div>
+    <button role="menuitem" class="danger" onclick={() => ctxDo(remove)}><Trash2 size={14} strokeWidth={1.5} />Delete</button>
+  </div>
 {/if}
 
 {#if store.error}
